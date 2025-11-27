@@ -1,0 +1,151 @@
+plugins {
+    id 'java'
+    id 'com.google.osdetector' version '1.7.+'
+    id "me.modmuss50.mod-publish-plugin" version "0.8.+"
+}
+
+def MT_TOKEN = System.getenv("MODRINTH_TOKEN")
+def CF_TOKEN = System.getenv("CURSEFORGE_TOKEN")
+
+base {
+    archivesName = id
+    libsDirectory = new File("builtJars/")
+}
+
+test {
+//    useJUnitPlatform()
+//    failOnNoDiscoveredTests.set(false)
+}
+
+java {
+    withSourcesJar()
+    sourceCompatibility = targetCompatibility = JavaVersion.VERSION_17
+}
+
+sourcesJar {
+    exclude("libs/**.zip")
+    exclude("libs/**.7z")
+}
+
+println("Gradle Java: ${JavaVersion.current()}")
+println("Building project: ${properties.simplename}")
+println("Java: ${System.getProperty 'java.version'}, JVM: ${System.getProperty 'java.vm.version'} (${System.getProperty 'java.vendor'}), Arch: ${System.getProperty 'os.arch'}, Encoding: ${System.getProperty "file.encoding"}")
+
+repositories {
+    google()
+    mavenCentral()
+    maven { url 'https://jitpack.io' }
+    maven { url "https://repo.spongepowered.org/maven" }
+}
+
+configurations {
+    include
+    include.extendsFrom(implementation)
+    library
+}
+
+sourceSets {
+    // SHADOW
+    main.compileClasspath += configurations.include
+    main.runtimeClasspath += configurations.include
+    test.compileClasspath += configurations.include
+    test.runtimeClasspath += configurations.include
+
+    // LIBRARY
+    main.compileClasspath += configurations.library
+    test.compileClasspath += configurations.library
+    test.runtimeClasspath += configurations.library
+}
+
+dependencies {
+    // DEPENDENCIES INCLUDED IN MINECRAFT
+    library "com.github.WaterMediaTeam:modloaders:$loaders_version"
+    library "org.apache.logging.log4j:log4j-api:$log4j_version"
+    library "org.apache.logging.log4j:log4j-core:$log4j_version"
+    library "net.java.dev.jna:jna:$jna_version"
+    library "net.java.dev.jna:jna-platform:$jna_version"
+}
+
+// Process target resources with mod info
+processResources {
+    outputs.upToDateWhen { false }
+    filesMatching(['META-INF/mods.toml', 'META-INF/neoforge.mods.toml', 'pack.mcmeta', 'fabric.mod.json', "watermedia/version.cfg"]) {
+        expand(project.properties)
+    }
+}
+
+jar {
+    duplicatesStrategy = DuplicatesStrategy.WARN
+
+    manifest {
+        attributes "id"                         : id
+        attributes "version"                    : version
+        attributes "Specification-Title"        : id
+        attributes "Specification-Vendor"       : authors
+        attributes "Specification-Version"      : version
+        attributes "Implementation-Title"       : id
+        attributes "Implementation-Version"     : version
+        attributes "Implementation-Vendor"      : authors
+        attributes "Implementation-Timestamp"   : new Date().format("yyyy-MM-dd'T'HH:mm:ssZ")
+        attributes "Main-Class": "org.watermedia.app.Main"
+    }
+    from {
+        configurations.include.collect {
+            it.isDirectory() ? it.matching {
+                exclude '*'
+//                include 'META-INF/services/**'  // Incluir servicios
+            } : zipTree(it).matching {
+                exclude '*'
+//                include 'META-INF/services/**'  // Incluir servicios
+            }
+        }
+    }
+    // Configurar estrategia para combinar archivos de servicios duplicados
+    filesMatching('META-INF/services/*') {
+        // Combinar contenido de archivos de servicio con el mismo nombre
+        duplicatesStrategy = DuplicatesStrategy.INCLUDE
+    }
+}
+
+publishMods {
+    file = jar.archiveFile
+    changelog = getChangelogText()
+    type = ALPHA
+    displayName = "WM/${project.properties.version}"
+    modLoaders.add("forge")
+    modLoaders.add("neoforge")
+    modLoaders.add("fabric")
+
+    additionalFiles.from(sourcesJar.archiveFile)
+    maxRetries = 2
+
+    dryRun = false
+
+    curseforge {
+        accessToken = CF_TOKEN
+        projectId = curseforgeid
+        minecraftVersions.addAll("1.18.2", "1.19.2", "1.20.1", "1.21.1", "1.21.5", "1.21.6")
+        javaVersions.addAll(JavaVersion.VERSION_21, JavaVersion.VERSION_17)
+        clientRequired = true
+        serverRequired = true
+        projectSlug = id
+        additionalFile(sourcesJar) {
+            name = "WMBIN-sources/${project.properties.version}"
+        }
+    }
+
+    modrinth {
+        accessToken = MT_TOKEN
+        projectId = modrinthid
+        minecraftVersions.addAll("1.18.2", "1.19.2", "1.20.1", "1.21.1", "1.21.5")
+    }
+}
+
+def getChangelogText() {
+    def result = ""
+    for (String line: file('CHANGELOG.md').readLines('UTF-8')) {
+        if (line.isEmpty()) return result
+        result += line + '\n'
+    }
+    return result
+}
