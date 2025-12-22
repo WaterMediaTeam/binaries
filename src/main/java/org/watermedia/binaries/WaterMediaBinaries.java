@@ -15,7 +15,6 @@ public class WaterMediaBinaries {
     public static final String ID = "waterbinaries";
     public static final String NAME = "WaterMedia Binaries";
     public static final String FFMPEG_ID = "ffmpeg";
-    public static final String LIBVLC_ID = "libvlc";
     public static final Logger LOGGER = LogManager.getLogger(ID);
     private static final Marker IT = MarkerManager.getMarker(WaterMediaBinaries.class.getSimpleName());
 
