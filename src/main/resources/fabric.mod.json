@@ -17,7 +17,7 @@
   "environment": "client",
   "entrypoints": {
     "main": [
-      "org.watermedia.bootstrap.FabricBootstrap"
+      "org.watermedia.binaries.bootstrap.FabricBootstrap"
     ]
   },
   "depends": {
