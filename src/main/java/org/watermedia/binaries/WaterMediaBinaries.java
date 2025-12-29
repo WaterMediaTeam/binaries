@@ -28,7 +28,7 @@ public class WaterMediaBinaries {
 
     public static synchronized void start(final String name, final Path tmp, final Path cwd, final boolean clientSide) {
         final Path dir = tmp != null ? tmp : cwd;
-        if (dir == null || clientSide) {
+        if (dir == null || !clientSide) {
             LOGGER.error(IT, "Failed to run Binaries extraction");
             return;
         }
