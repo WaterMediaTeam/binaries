@@ -1,7 +1,6 @@
 plugins {
     id 'java'
-    id 'com.google.osdetector' version '1.7.+'
-    id "me.modmuss50.mod-publish-plugin" version "0.8.+"
+    id "me.modmuss50.mod-publish-plugin" version "1.1.+"
 }
 
 def MT_TOKEN = System.getenv("MODRINTH_TOKEN")
@@ -12,13 +11,7 @@ base {
     libsDirectory = new File("builtJars/")
 }
 
-test {
-//    useJUnitPlatform()
-//    failOnNoDiscoveredTests.set(false)
-}
-
 java {
-    withSourcesJar()
     sourceCompatibility = targetCompatibility = JavaVersion.VERSION_17
 }
 
@@ -60,6 +53,7 @@ sourceSets {
 dependencies {
     // DEPENDENCIES INCLUDED IN MINECRAFT
     library "com.github.WaterMediaTeam:modloaders:$loaders_version"
+
     library "org.apache.logging.log4j:log4j-api:$log4j_version"
     library "org.apache.logging.log4j:log4j-core:$log4j_version"
     library "net.java.dev.jna:jna:$jna_version"
@@ -93,10 +87,8 @@ jar {
         configurations.include.collect {
             it.isDirectory() ? it.matching {
                 exclude '*'
-//                include 'META-INF/services/**'  // Incluir servicios
             } : zipTree(it).matching {
                 exclude '*'
-//                include 'META-INF/services/**'  // Incluir servicios
             }
         }
     }
@@ -110,13 +102,11 @@ jar {
 publishMods {
     file = jar.archiveFile
     changelog = getChangelogText()
-    type = ALPHA
-    displayName = "WM/${project.properties.version}"
+    type = BETA
+    displayName = "WM-Binaries/${project.properties.version}"
     modLoaders.add("forge")
     modLoaders.add("neoforge")
     modLoaders.add("fabric")
-
-    additionalFiles.from(sourcesJar.archiveFile)
     maxRetries = 2
 
     dryRun = false
@@ -124,20 +114,17 @@ publishMods {
     curseforge {
         accessToken = CF_TOKEN
         projectId = curseforgeid
-        minecraftVersions.addAll("1.18.2", "1.19.2", "1.20.1", "1.21.1", "1.21.5", "1.21.6")
-        javaVersions.addAll(JavaVersion.VERSION_21, JavaVersion.VERSION_17)
+        minecraftVersions.addAll("1.18.2", "1.19.2", "1.20.1", "1.21.1", "1.21.11")
+        javaVersions.addAll(JavaVersion.VERSION_25, JavaVersion.VERSION_21, JavaVersion.VERSION_17)
         clientRequired = true
-        serverRequired = true
+        serverRequired = false
         projectSlug = id
-        additionalFile(sourcesJar) {
-            name = "WMBIN-sources/${project.properties.version}"
-        }
     }
 
     modrinth {
         accessToken = MT_TOKEN
         projectId = modrinthid
-        minecraftVersions.addAll("1.18.2", "1.19.2", "1.20.1", "1.21.1", "1.21.5")
+        minecraftVersions.addAll("1.18.2", "1.19.2", "1.20.1", "1.21.1", "1.21.11")
     }
 }
 
