@@ -2,6 +2,7 @@ package org.watermedia.binaries.tools;
 
 import com.sun.jna.Platform;
 import org.apache.logging.log4j.Marker;
+import org.apache.logging.log4j.MarkerManager;
 
 import java.io.*;
 import java.nio.file.*;
@@ -12,64 +13,56 @@ import java.util.zip.ZipInputStream;
 import static org.watermedia.binaries.WaterMediaBinaries.LOGGER;
 
 public class IOTools {
+    private static final Marker IT = MarkerManager.getMarker(IOTools.class.getSimpleName());
     private static final String VERSION_FILE = "version.cfg";
-    private static final int BUFFER_SIZE = 8192;
     
     public static String getPlatformId() {
-        final String os;
-        final String arch;
-        
-        if (Platform.isWindows()) {
-            os = "win";
-        } else if (Platform.isMac()) {
-            os = "mac";
-        } else if (Platform.isLinux()) {
-            os = "linux";
-        } else {
-            throw new UnsupportedOperationException("Unsupported OS: " + Platform.getOSType());
-        }
-        
-        if (Platform.isARM() && Platform.is64Bit()) {
-            arch = "arm64";
-        } else if (Platform.isIntel() /* This must be named "is x86"*/ && Platform.is64Bit()) {
-            arch = "x86_64";
-        } else {
-            throw new UnsupportedOperationException("Unsupported architecture: " + Platform.ARCH);
-        }
+        final String os = Platform.isWindows()
+                ? "win" : Platform.isMac()
+                ? "mac" : Platform.isLinux()
+                ? "linux" : null;
+
+        final String arch = !Platform.is64Bit()
+                ? null : Platform.isARM()
+                ? "arm64" : Platform.isIntel()
+                ? "x86_64" : null;
+
+        if (os == null || arch == null)
+            throw new UnsupportedOperationException("Unsupported system: " + System.getProperty("os.name") + "-" + Platform.ARCH);
         
         return os + "-" + arch;
     }
     
-    public static boolean extract(final InputStream zipStream, final Path target, final Marker marker) {
+    public static boolean extract(final InputStream in, final Path target, final Marker marker) {
         try {
             LOGGER.info(marker, "Extracting to: {}", target);
             Files.createDirectories(target);
-            
-            try (final ZipInputStream zis = new ZipInputStream(zipStream)) {
-                ZipEntry entry;
-                final byte[] buffer = new byte[BUFFER_SIZE];
-                
-                while ((entry = zis.getNextEntry()) != null) {
-                    final Path file = target.resolve(entry.getName());
+
+            try (final ZipInputStream zip = new ZipInputStream(in)) {
+                ZipEntry entry = zip.getNextEntry();
+                final byte[] buffer = new byte[131072]; // 128 KB buffer
+
+
+                while (entry != null) {
+                    final File file = target.resolve(entry.getName()).toFile();
                     
-                    if (entry.isDirectory()) {
-                        Files.createDirectories(file);
+                    if ((entry.isDirectory() && !file.mkdirs()) || !file.getParentFile().mkdirs()) {
+                        LOGGER.warn(IT, "Could not create directories for: {}", file.getAbsolutePath());
                     } else {
-                        Files.createDirectories(file.getParent());
-                        
-                        try (final OutputStream out = Files.newOutputStream(file)) {
+                        try (final FileOutputStream out = new FileOutputStream(file)) {
                             int len;
-                            while ((len = zis.read(buffer)) > 0) {
+                            while ((len = zip.read(buffer)) > 0) {
                                 out.write(buffer, 0, len);
                             }
                         }
-                        
+
                         // Set executable permission for binaries
                         if (!entry.getName().endsWith(".cfg")) {
                             setExecutable(file);
                         }
                     }
-                    zis.closeEntry();
+                    zip.closeEntry();
+                    entry = zip.getNextEntry();
                 }
             }
             
@@ -181,12 +174,14 @@ public class IOTools {
         }
     }
     
-    private static void setExecutable(final Path file) {
+    private static void setExecutable(final File file) {
         try {
-            file.toFile().setExecutable(true, false);
-        } catch (final SecurityException e) {
-            // Ignore permission errors
-        }
+            if (file.setExecutable(true, false)) {
+                return;
+            }
+        } catch (final SecurityException ignored) {}
+
+        LOGGER.warn(IT, "Could not set executable permission for: {}", file.getAbsolutePath());
     }
     
     private static int compareVersions(final String v1, final String v2) {

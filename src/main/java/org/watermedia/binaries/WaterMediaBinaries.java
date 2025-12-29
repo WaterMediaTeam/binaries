@@ -5,111 +5,72 @@ import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.Marker;
 import org.apache.logging.log4j.MarkerManager;
 import org.watermedia.binaries.manager.BinaryManager;
+import org.watermedia.binaries.manager.FFmpegManager;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.ServiceLoader;
 
 public class WaterMediaBinaries {
-    public static final String ID = "waterbinaries";
+    public static final String ID = "wm_binaries";
     public static final String NAME = "WaterMedia Binaries";
-    public static final String FFMPEG_ID = "ffmpeg";
+    public static final String
+            FFMPEG_ID = "ffmpeg";
+
     public static final Logger LOGGER = LogManager.getLogger(ID);
+    private static final List<BinaryManager> MANAGERS = new ArrayList<>();
     private static final Marker IT = MarkerManager.getMarker(WaterMediaBinaries.class.getSimpleName());
 
-    private static final ServiceLoader<BinaryManager> MANAGERS = ServiceLoader.load(BinaryManager.class);
-
-    private static boolean initialized = false;
+    static {
+        LOGGER.info(IT, "Loading Binary Managers");
+        MANAGERS.add(new FFmpegManager());
+    }
 
     public static synchronized void start(final String name, final Path tmp, final Path cwd, final boolean clientSide) {
-        LOGGER.info(IT, "Starting WaterMedia Binaries initialization");
-        if (initialized) {
-            LOGGER.warn(IT, "WaterMedia Binaries already initialized");
+        final Path dir = tmp != null ? tmp : cwd;
+        if (dir == null || clientSide) {
+            LOGGER.error(IT, "Failed to run Binaries extraction");
             return;
         }
 
-        int count = 0;
-        for (final BinaryManager manager: MANAGERS) {
-            LOGGER.debug(IT, "Registered binary manager: {}", manager.name());
-            count++;
-        }
-
-        if (count == 0) {
-            LOGGER.warn(IT, "No Binary Managers found!");
-        } else {
-            LOGGER.info(IT, "Total Binary Managers registered: {}", count);
-        }
-
-        final Path baseDir = tmp != null ? tmp : cwd;
-
-        if (baseDir == null) {
-            LOGGER.error(IT, "No valid base directory provided");
-            return;
-        }
-
-        int successful = 0;
-        int failed = 0;
-
+        LOGGER.info(IT, "Starting Binaries extraction on {} in path: {}", name, dir.toAbsolutePath());
         for (final BinaryManager manager: MANAGERS) {
             try {
                 LOGGER.info(IT, "Extracting binaries for: {}", manager.name());
-
-                if (manager.extract(baseDir)) {
-                    successful++;
-                    LOGGER.info(IT, "{} extraction completed successfully", manager.name());
-                } else {
-                    failed++;
-                    LOGGER.warn(IT, "{} extraction failed or not available", manager.name());
-                }
-
+                LOGGER.info(IT, "{} extraction {}", manager.name(), manager.extract(dir) ? "succeeded" : "failed");
             } catch (final Exception e) {
-                failed++;
                 LOGGER.error(IT, "Failed to extract binaries for: {}", manager.name(), e);
             }
         }
-
-        LOGGER.info(IT, "Binary extraction complete - Successful: {}, Failed: {}", successful, failed);
-
-        initialized = true;
     }
 
-    public static synchronized Path getBinaryPath(final String name) {
-        if (!initialized) {
-            LOGGER.warn(IT, "WaterMedia Binaries not initialized. Call start() first.");
-            return null;
-        }
-
+    public static synchronized Path pathOf(final String name) {
         for (final BinaryManager manager: MANAGERS) {
             if (manager.name().equalsIgnoreCase(name)) {
                 if (manager.ready()) {
                     LOGGER.debug(IT, "Binary path for {}: {}", name, manager.path().toAbsolutePath());
                     return manager.path().toAbsolutePath();
                 } else {
-                    LOGGER.warn(IT, "Binary manager {} is not ready", name);
+                    LOGGER.error(IT, "Binary manager {} is not ready", name);
                     return null;
                 }
             }
         }
 
-        LOGGER.warn(IT, "No binary manager found for name: {}", name);
+        LOGGER.error(IT, "Failed to get binary manager for name: {}", name);
         return null;
     }
 
     public static synchronized void cleanup(final boolean force) {
-        LOGGER.info(IT, "Cleaning up all binaries (force={})", force);
+        LOGGER.info(IT, "Starting cleanup for all binaries (force={})", force);
 
         for (final BinaryManager manager: MANAGERS) {
             try {
                 manager.cleanup(force);
-                LOGGER.debug(IT, "Cleaned up {}", manager.name());
+                LOGGER.info(IT, "Cleaned up {}", manager.name());
             } catch (final Exception e) {
                 LOGGER.error(IT, "Failed to cleanup {}", manager.name(), e);
             }
-        }
-
-        if (force) {
-            initialized = false;
         }
     }
 }

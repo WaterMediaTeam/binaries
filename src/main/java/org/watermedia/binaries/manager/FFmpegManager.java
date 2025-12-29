@@ -1,6 +1,5 @@
 package org.watermedia.binaries.manager;
 
-import com.sun.jna.Platform;
 import org.apache.logging.log4j.Marker;
 import org.apache.logging.log4j.MarkerManager;
 import org.watermedia.binaries.WaterMediaBinaries;
