@@ -5,7 +5,6 @@ import org.apache.logging.log4j.MarkerManager;
 import org.watermedia.tools.IOTool;
 import org.watermedia.tools.VersionTool;
 
-import java.net.URL;
 import java.nio.file.Path;
 
 import static org.watermedia.binaries.WaterMediaBinaries.LOGGER;

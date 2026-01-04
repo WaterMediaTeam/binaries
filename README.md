@@ -16,7 +16,7 @@ and mirrored here for easier access. It's on the board migrate to build on Actio
 | Platform | Architecture | Status |
 |----------|--------------|:------:|
 | Windows  | x86_64       |   ✅    |
-| Windows  | aarch64      |   ⛔    |
+| Windows  | aarch64      |   ✅    |
 | Linux    | x86_64       |   ✅    |
 | Linux    | aarch64      |   ✅    |
 | macOS    | x86_64       |   ✅    |
@@ -28,4 +28,4 @@ and mirrored here for easier access. It's on the board migrate to build on Actio
 - ISPCTextureCompressor (Samsung fork)
 
 # LICENCES
-The code and the project its licensed under GPLv3.
+- FFMPEG: licensed under GPL as an aggregation
