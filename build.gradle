@@ -46,13 +46,13 @@ sourceSets {
 }
 
 dependencies {
-    // DEPENDENCIES INCLUDED IN MINECRAFT
+    // DEPENDENCIES INCLUDED IN THE FINAL JAR
     library "com.github.WaterMediaTeam:modloaders:$loaders_version"
+    library "org.watermedia:tools"
 
+    // DEPENDENCIES NOT INCLUDED IN MINECRAFT
     library "org.apache.logging.log4j:log4j-api:$log4j_version"
     library "org.apache.logging.log4j:log4j-core:$log4j_version"
-    library "net.java.dev.jna:jna:$jna_version"
-    library "net.java.dev.jna:jna-platform:$jna_version"
 }
 
 // Process target resources with mod info

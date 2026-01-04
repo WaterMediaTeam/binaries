@@ -3,7 +3,6 @@
 /build
 /builtJars
 /out/
-/builtJars
 /config
 /.idea
 !/.idea/icon.svg

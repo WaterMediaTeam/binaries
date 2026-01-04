@@ -21,6 +21,7 @@
     ]
   },
   "depends": {
-    "java": "$javarange"
+    "java": "$javarange",
+    "fabricloader": "$fabricrange"
   }
 }
