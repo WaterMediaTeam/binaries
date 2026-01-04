@@ -1,10 +1,9 @@
 # Project exclude paths
-/.gradle/
-/build/
-/build/classes/java/main/
-/build/classes/java/test/
+/.gradle
+/build
+/builtJars
 /out/
-/builtJars/
-/config/
-/.idea/
+/builtJars
+/config
+/.idea
 !/.idea/icon.svg
