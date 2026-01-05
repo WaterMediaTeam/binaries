@@ -12,7 +12,7 @@ env:
 
 jobs:
   build:
-    runs-on: windows-2025
+    runs-on: windows-latest
     name: Build Windows x64
 
     steps:
@@ -29,7 +29,6 @@ jobs:
             mingw-w64-ucrt-x86_64-toolchain
             mingw-w64-ucrt-x86_64-nasm
             mingw-w64-ucrt-x86_64-pkgconf
-            mingw-w64-ucrt-x86_64-libwinpthread
             zip
             wget
             git
@@ -50,7 +49,6 @@ jobs:
             mingw-w64-ucrt-x86_64-gsm
             mingw-w64-ucrt-x86_64-opencore-amr
             mingw-w64-ucrt-x86_64-libwebp
-            mingw-w64-ucrt-x86_64-libjxl
             mingw-w64-ucrt-x86_64-openjpeg2
             mingw-w64-ucrt-x86_64-libass
             mingw-w64-ucrt-x86_64-freetype
@@ -61,7 +59,6 @@ jobs:
             mingw-w64-ucrt-x86_64-gmp
             mingw-w64-ucrt-x86_64-SDL2
             mingw-w64-ucrt-x86_64-zimg
-            mingw-w64-ucrt-x86_64-zvbi
             mingw-w64-ucrt-x86_64-libbluray
             mingw-w64-ucrt-x86_64-libgme
             mingw-w64-ucrt-x86_64-libmodplug
@@ -69,13 +66,10 @@ jobs:
             mingw-w64-ucrt-x86_64-libssh
             mingw-w64-ucrt-x86_64-srt
             mingw-w64-ucrt-x86_64-vid.stab
-            mingw-w64-ucrt-x86_64-libplacebo
             mingw-w64-ucrt-x86_64-librsvg
             mingw-w64-ucrt-x86_64-libxml2
             mingw-w64-ucrt-x86_64-libcaca
             mingw-w64-ucrt-x86_64-frei0r-plugins
-            mingw-w64-ucrt-x86_64-shaderc
-            mingw-w64-ucrt-x86_64-liblc3
             mingw-w64-ucrt-x86_64-snappy
             mingw-w64-ucrt-x86_64-xz
             mingw-w64-ucrt-x86_64-bzip2
@@ -120,14 +114,12 @@ jobs:
             --enable-libgme \
             --enable-libgsm \
             --enable-libharfbuzz \
-            --enable-liblc3 \
             --enable-libmodplug \
             --enable-libmp3lame \
             --enable-libopencore-amrnb \
             --enable-libopencore-amrwb \
             --enable-libopenjpeg \
             --enable-libopus \
-            --enable-libplacebo \
             --enable-librav1e \
             --enable-librsvg \
             --enable-librtmp \
@@ -147,11 +139,8 @@ jobs:
             --enable-libxml2 \
             --enable-libxvid \
             --enable-libzimg \
-            --enable-libzvbi \
             --enable-gnutls \
-          
-          
-            --enable-libshaderc \
+            --enable-frei0r \
             --enable-d3d11va \
             --enable-dxva2
 
@@ -165,60 +154,39 @@ jobs:
       - name: Test binaries
         shell: msys2 {0}
         run: |
-          echo "Testing FFmpeg binaries..."
-          # Convert Windows path to Unix path for MSYS2
           WORKSPACE=$(cygpath -u "${{ github.workspace }}")
           "${WORKSPACE}/ffmpeg-build/bin/ffmpeg.exe" -version
           "${WORKSPACE}/ffmpeg-build/bin/ffprobe.exe" -version
-          echo "Binary test passed!"
 
       - name: Package binaries
         shell: msys2 {0}
         run: |
-          set -x
           WORKSPACE=$(cygpath -u "${{ github.workspace }}")
           cd "${WORKSPACE}/ffmpeg-build"
           
           mkdir -p package
-          
-          # Copy FFmpeg DLLs and EXEs
           cp bin/*.dll package/ 2>/dev/null || true
           cp bin/*.exe package/ 2>/dev/null || true
           
-          echo "Initial DLLs: $(ls package/*.dll 2>/dev/null | wc -l)"
-          
-          # Collect all MSYS2 dependencies iteratively
+          # Collect MSYS2 dependencies iteratively
           for i in 1 2 3 4 5; do
-            echo "=== Pass $i ==="
             found=0
-          
             for dll in package/*.dll; do
               [ -f "$dll" ] || continue
-          
-              # Get dependencies - use grep || true properly
               deps=$(ldd "$dll" 2>/dev/null | { grep -i ucrt64 || true; } | awk '{print $3}')
-          
               for dep in $deps; do
                 [ -z "$dep" ] && continue
                 [ ! -f "$dep" ] && continue
-          
                 base=$(basename "$dep")
                 if [ ! -f "package/$base" ]; then
                   cp "$dep" package/ && found=1
                 fi
               done
             done
-          
-            echo "DLLs after pass $i: $(ls package/*.dll 2>/dev/null | wc -l)"
             [ "$found" -eq 0 ] && break
           done
           
-          # Version file
           echo "${{ env.FFMPEG_VERSION }}" > package/version.cfg
-          
-          echo "Final contents: $(ls package/ | wc -l) files"
-          
-          # Create zip
           cd package
           zip -r ../ffmpeg-windows-x64.zip .
 

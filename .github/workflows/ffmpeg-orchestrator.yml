@@ -6,164 +6,77 @@ on:
       ffmpeg_version:
         description: 'FFmpeg version to build'
         required: true
-        default: '7.1.3'
+        default: '7.1'
         type: string
 
 jobs:
-  # ============================================
-  # TRIGGER ALL BUILD WORKFLOWS
-  # ============================================
-  trigger-builds:
-    runs-on: ubuntu-latest
-    name: Trigger Build Jobs
-    outputs:
-      version: ${{ inputs.ffmpeg_version }}
-    steps:
-      - name: Log build start
-        run: |
-          echo "Starting FFmpeg ${{ inputs.ffmpeg_version }} builds"
-          echo "Timestamp: $(date -u)"
-
-  # ============================================
-  # INDIVIDUAL BUILD JOBS (run in parallel)
-  # ============================================
-  build-windows-x64:
-    needs: trigger-builds
-    uses: ./.github/workflows/ffmpeg-windows-x64.yml
-    with:
-      ffmpeg_version: ${{ inputs.ffmpeg_version }}
-
-  build-windows-arm64:
-    needs: trigger-builds
-    uses: ./.github/workflows/ffmpeg-windows-arm64.yml
-    with:
-      ffmpeg_version: ${{ inputs.ffmpeg_version }}
-
-  build-linux-x64:
-    needs: trigger-builds
+  linux-x64:
     uses: ./.github/workflows/ffmpeg-linux-x64.yml
     with:
       ffmpeg_version: ${{ inputs.ffmpeg_version }}
 
-  build-linux-arm64:
-    needs: trigger-builds
+  linux-arm64:
     uses: ./.github/workflows/ffmpeg-linux-arm64.yml
     with:
       ffmpeg_version: ${{ inputs.ffmpeg_version }}
 
-  build-macos-x64:
-    needs: trigger-builds
+  macos-x64:
     uses: ./.github/workflows/ffmpeg-macos-x64.yml
     with:
       ffmpeg_version: ${{ inputs.ffmpeg_version }}
 
-  build-macos-arm64:
-    needs: trigger-builds
+  macos-arm64:
     uses: ./.github/workflows/ffmpeg-macos-arm64.yml
     with:
       ffmpeg_version: ${{ inputs.ffmpeg_version }}
 
-  # ============================================
-  # COLLECT AND FINALIZE
-  # Each build job that succeeds will be processed
-  # ============================================
-  finalize:
-    runs-on: ubuntu-latest
-    name: Finalize and Commit
-    needs:
-      - build-windows-x64
-      - build-windows-arm64
-      - build-linux-x64
-      - build-linux-arm64
-      - build-macos-x64
-      - build-macos-arm64
-    if: always() && (needs.build-windows-x64.result == 'success' || needs.build-windows-arm64.result == 'success' || needs.build-linux-x64.result == 'success' || needs.build-linux-arm64.result == 'success' || needs.build-macos-x64.result == 'success' || needs.build-macos-arm64.result == 'success')
-    
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+  windows-x64:
+    uses: ./.github/workflows/ffmpeg-windows-x64.yml
+    with:
+      ffmpeg_version: ${{ inputs.ffmpeg_version }}
 
-      - name: Download all successful artifacts
+  windows-arm64:
+    uses: ./.github/workflows/ffmpeg-windows-arm64.yml
+    with:
+      ffmpeg_version: ${{ inputs.ffmpeg_version }}
+
+  create-release:
+    needs: [linux-x64, linux-arm64, macos-x64, macos-arm64, windows-x64, windows-arm64]
+    if: always()
+    runs-on: ubuntu-latest
+    name: Create Release Package
+
+    steps:
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-          pattern: ffmpeg-*
-          merge-multiple: false
 
-      - name: List downloaded artifacts
+      - name: List artifacts
         run: |
           echo "Downloaded artifacts:"
           find artifacts -type f -name "*.zip" | while read f; do
-            echo "  - $f"
+            echo "  - $f ($(du -h "$f" | cut -f1))"
           done
 
-      - name: Report build status
+      - name: Create combined release
         run: |
-          echo "## Build Results Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Platform | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|----------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Windows x64 | ${{ needs.build-windows-x64.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Windows ARM64 | ${{ needs.build-windows-arm64.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Linux x64 | ${{ needs.build-linux-x64.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Linux ARM64 | ${{ needs.build-linux-arm64.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| macOS x64 | ${{ needs.build-macos-x64.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| macOS ARM64 | ${{ needs.build-macos-arm64.result }} |" >> $GITHUB_STEP_SUMMARY
-
-      - name: Create final release structure
-        run: |
-          VERSION="${{ inputs.ffmpeg_version }}"
           mkdir -p release
           
-          # Process each successful build
-          for platform_dir in artifacts/ffmpeg-*/; do
-            if [ -d "$platform_dir" ]; then
-              platform=$(basename "$platform_dir")
-              echo "Processing $platform..."
-              
-              # Find the zip file
-              zip_file=$(find "$platform_dir" -name "*.zip" -type f | head -1)
-              if [ -n "$zip_file" ]; then
-                # Extract to temp
-                temp_dir=$(mktemp -d)
-                unzip -q "$zip_file" -d "$temp_dir"
-                
-                # Create platform-specific zip with flat structure
-                mkdir -p "release/$platform"
-                
-                # Copy DLLs/dylibs/so files
-                find "$temp_dir" -type f \( -name "*.dll" -o -name "*.dylib" -o -name "*.so*" \) -exec cp {} "release/$platform/" \;
-                
-                # Create version.cfg
-                echo "$VERSION" > "release/$platform/version.cfg"
-                
-                # Create final zip
-                cd "release/$platform"
-                zip -r "../${platform}.zip" .
-                cd ../..
-                
-                rm -rf "$temp_dir"
-                echo "Created release/${platform}.zip"
-              fi
-            fi
-          done
+          # Move all zip files to release folder
+          find artifacts -name "*.zip" -exec mv {} release/ \;
           
-          ls -la release/
+          # Create manifest
+          echo "FFmpeg ${{ inputs.ffmpeg_version }} - Built $(date -u +%Y-%m-%d)" > release/BUILD_INFO.txt
+          echo "" >> release/BUILD_INFO.txt
+          echo "Contents:" >> release/BUILD_INFO.txt
+          ls -la release/*.zip >> release/BUILD_INFO.txt 2>/dev/null || echo "No builds completed" >> release/BUILD_INFO.txt
+          
+          cat release/BUILD_INFO.txt
 
-      - name: Upload final releases
+      - name: Upload combined release
         uses: actions/upload-artifact@v4
         with:
-          name: ffmpeg-releases-${{ inputs.ffmpeg_version }}
-          path: release/*.zip
-          retention-days: 90
-
-      - name: Create GitHub Release (optional)
-        if: github.event_name == 'workflow_dispatch'
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: v${{ inputs.ffmpeg_version }}
-          name: FFmpeg ${{ inputs.ffmpeg_version }}
-          draft: true
-          files: release/*.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: ffmpeg-${{ inputs.ffmpeg_version }}-all-platforms
+          path: release/
+          retention-days: 30

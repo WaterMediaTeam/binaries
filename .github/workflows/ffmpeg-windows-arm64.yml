@@ -12,7 +12,7 @@ env:
 
 jobs:
   build:
-    runs-on: windows-11-arm
+    runs-on: windows-latest
     name: Build Windows ARM64
 
     steps:
@@ -27,8 +27,8 @@ jobs:
           install: >-
             base-devel
             mingw-w64-clang-aarch64-toolchain
+            mingw-w64-clang-aarch64-nasm
             mingw-w64-clang-aarch64-pkgconf
-            mingw-w64-clang-aarch64-libwinpthread
             zip
             wget
             git
@@ -51,8 +51,13 @@ jobs:
             mingw-w64-clang-aarch64-fribidi
             mingw-w64-clang-aarch64-harfbuzz
             mingw-w64-clang-aarch64-gnutls
+            mingw-w64-clang-aarch64-gmp
             mingw-w64-clang-aarch64-SDL2
             mingw-w64-clang-aarch64-zimg
+            mingw-w64-clang-aarch64-libbluray
+            mingw-w64-clang-aarch64-libsoxr
+            mingw-w64-clang-aarch64-libssh
+            mingw-w64-clang-aarch64-srt
             mingw-w64-clang-aarch64-libxml2
             mingw-w64-clang-aarch64-snappy
             mingw-w64-clang-aarch64-xz
@@ -79,9 +84,6 @@ jobs:
             --disable-static \
             --enable-pic \
             --enable-w32threads \
-            --disable-x86asm \
-            --cc=clang \
-            --cxx=clang++ \
             --disable-doc \
             --disable-htmlpages \
             --disable-manpages \
@@ -90,6 +92,7 @@ jobs:
             --disable-debug \
             --enable-libaom \
             --enable-libass \
+            --enable-libbluray \
             --enable-libdav1d \
             --enable-libfdk-aac \
             --enable-libfontconfig \
@@ -99,7 +102,11 @@ jobs:
             --enable-libmp3lame \
             --enable-libopenjpeg \
             --enable-libopus \
+            --enable-libsnappy \
+            --enable-libsoxr \
             --enable-libspeex \
+            --enable-libsrt \
+            --enable-libssh \
             --enable-libtheora \
             --enable-libvorbis \
             --enable-libvpx \
@@ -109,8 +116,8 @@ jobs:
             --enable-libxml2 \
             --enable-libzimg \
             --enable-gnutls \
-          
-            --enable-d3d11va
+            --enable-d3d11va \
+            --enable-dxva2
 
       - name: Build FFmpeg
         shell: msys2 {0}
@@ -122,60 +129,39 @@ jobs:
       - name: Test binaries
         shell: msys2 {0}
         run: |
-          echo "Testing FFmpeg binaries..."
-          # Convert Windows path to Unix path for MSYS2
           WORKSPACE=$(cygpath -u "${{ github.workspace }}")
           "${WORKSPACE}/ffmpeg-build/bin/ffmpeg.exe" -version
           "${WORKSPACE}/ffmpeg-build/bin/ffprobe.exe" -version
-          echo "Binary test passed!"
 
       - name: Package binaries
         shell: msys2 {0}
         run: |
-          set -x
           WORKSPACE=$(cygpath -u "${{ github.workspace }}")
           cd "${WORKSPACE}/ffmpeg-build"
           
           mkdir -p package
-          
-          # Copy FFmpeg DLLs and EXEs
           cp bin/*.dll package/ 2>/dev/null || true
           cp bin/*.exe package/ 2>/dev/null || true
           
-          echo "Initial DLLs: $(ls package/*.dll 2>/dev/null | wc -l)"
-          
-          # Collect all MSYS2 dependencies iteratively
+          # Collect MSYS2 dependencies iteratively
           for i in 1 2 3 4 5; do
-            echo "=== Pass $i ==="
             found=0
-          
             for dll in package/*.dll; do
               [ -f "$dll" ] || continue
-          
-              # Get dependencies - use grep || true properly
               deps=$(ldd "$dll" 2>/dev/null | { grep -i clangarm64 || true; } | awk '{print $3}')
-          
               for dep in $deps; do
                 [ -z "$dep" ] && continue
                 [ ! -f "$dep" ] && continue
-          
                 base=$(basename "$dep")
                 if [ ! -f "package/$base" ]; then
                   cp "$dep" package/ && found=1
                 fi
               done
             done
-          
-            echo "DLLs after pass $i: $(ls package/*.dll 2>/dev/null | wc -l)"
             [ "$found" -eq 0 ] && break
           done
           
-          # Version file
           echo "${{ env.FFMPEG_VERSION }}" > package/version.cfg
-          
-          echo "Final contents: $(ls package/ | wc -l) files"
-          
-          # Create zip
           cd package
           zip -r ../ffmpeg-windows-arm64.zip .
 
