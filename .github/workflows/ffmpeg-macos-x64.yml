@@ -1,0 +1,166 @@
+name: FFmpeg macOS x64
+
+on:
+  workflow_call:
+    inputs:
+      ffmpeg_version:
+        required: true
+        type: string
+
+env:
+  FFMPEG_VERSION: ${{ inputs.ffmpeg_version }}
+
+jobs:
+  build:
+    runs-on: macos-14
+    name: Build macOS x64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          brew update
+          brew upgrade
+          brew install \
+            nasm yasm pkg-config cmake meson ninja \
+            x264 x265 libvpx lame opus libvorbis theora libogg \
+            libass freetype fontconfig fribidi harfbuzz gnutls \
+            sdl2 aom dav1d webp libsoxr zimg zeromq \
+            speex two-lame libbluray libgme rubberband \
+            srt libssh libxml2 snappy openjpeg libbs2b libcaca \
+            rav1e svt-av1 jpeg-xl librsvg xvid opencore-amr \
+            kvazaar openh264 librist lv2 lilv \
+            gmp openssl
+
+      - name: Download FFmpeg source
+        run: |
+          curl -L "https://ffmpeg.org/releases/ffmpeg-${{ env.FFMPEG_VERSION }}.tar.xz" -o ffmpeg.tar.xz
+          tar -xf ffmpeg.tar.xz
+          mv ffmpeg-${{ env.FFMPEG_VERSION }} ffmpeg-src
+
+      - name: Save configure help
+        working-directory: ffmpeg-src
+        run: |
+          ./configure --help > "${{ github.workspace }}/configure-help-macos-x64.txt"
+
+      - name: Configure FFmpeg
+        working-directory: ffmpeg-src
+        run: |
+          # Collect keg-only package paths
+          PKG_PATHS=""
+          EXTRA_CFLAGS=""
+          EXTRA_LDFLAGS=""
+          
+          for pkg in x264 x265 lame opus libvorbis theora libogg libass freetype fontconfig \
+                     fribidi harfbuzz gnutls sdl2 aom dav1d webp libsoxr speex \
+                     libbluray libgme rubberband srt libssh libxml2 snappy openjpeg \
+                     libbs2b rav1e svt-av1 jpeg-xl librsvg xvid opencore-amr \
+                     kvazaar openh264 librist lv2 lilv gmp openssl; do
+            if brew --prefix "$pkg" &>/dev/null; then
+              PKG_PREFIX="$(brew --prefix "$pkg")"
+              if [ -d "$PKG_PREFIX/lib/pkgconfig" ]; then
+                PKG_PATHS="$PKG_PREFIX/lib/pkgconfig:$PKG_PATHS"
+              fi
+              EXTRA_CFLAGS="$EXTRA_CFLAGS -I$PKG_PREFIX/include"
+              EXTRA_LDFLAGS="$EXTRA_LDFLAGS -L$PKG_PREFIX/lib"
+            fi
+          done
+          
+          export PKG_CONFIG_PATH="$PKG_PATHS$PKG_CONFIG_PATH"
+          
+          ./configure \
+            --prefix="${{ github.workspace }}/ffmpeg-build" \
+            --enable-gpl \
+            --enable-version3 \
+            --enable-shared \
+            --disable-static \
+            --enable-pic \
+            --enable-pthreads \
+            --disable-doc \
+            --disable-htmlpages \
+            --disable-manpages \
+            --disable-podpages \
+            --disable-txtpages \
+            --disable-debug \
+            --enable-libaom \
+            --enable-libass \
+            --enable-libbluray \
+            --enable-libbs2b \
+            --enable-libcaca \
+            --enable-libdav1d \
+            --enable-libfontconfig \
+            --enable-libfreetype \
+            --enable-libfribidi \
+            --enable-libharfbuzz \
+            --enable-libgme \
+            --enable-libkvazaar \
+            --enable-libmp3lame \
+            --enable-libopencore-amrnb \
+            --enable-libopencore-amrwb \
+            --enable-libopenh264 \
+            --enable-libopenjpeg \
+            --enable-libopus \
+            --enable-librav1e \
+            --enable-librist \
+            --enable-librsvg \
+            --enable-librubberband \
+            --enable-libsnappy \
+            --enable-libsoxr \
+            --enable-libspeex \
+            --enable-libsrt \
+            --enable-libssh \
+            --enable-libsvtav1 \
+            --enable-libtheora \
+            --enable-libvorbis \
+            --enable-libvpx \
+            --enable-libwebp \
+            --enable-libx264 \
+            --enable-libx265 \
+            --enable-libxvid \
+            --enable-libxml2 \
+            --enable-libzimg \
+            --enable-libzmq \
+            --enable-libjxl \
+            --enable-lv2 \
+            --enable-openssl \
+            --enable-gmp \
+            --enable-videotoolbox \
+            --enable-audiotoolbox \
+            --extra-cflags="$EXTRA_CFLAGS" \
+            --extra-ldflags="$EXTRA_LDFLAGS"
+
+      - name: Build FFmpeg
+        working-directory: ffmpeg-src
+        run: |
+          make -j$(sysctl -n hw.ncpu)
+          make install
+
+      - name: Test binaries
+        run: |
+          ${{ github.workspace }}/ffmpeg-build/bin/ffmpeg -version
+          ${{ github.workspace }}/ffmpeg-build/bin/ffprobe -version
+
+      - name: Package binaries
+        run: |
+          cd "${{ github.workspace }}/ffmpeg-build"
+          mkdir -p package
+          cp lib/*.dylib package/ 2>/dev/null || true
+          echo "${{ env.FFMPEG_VERSION }}" > package/version.cfg
+          cd package
+          zip -r ../ffmpeg-macos-x64.zip .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-macos-x64
+          path: ${{ github.workspace }}/ffmpeg-build/ffmpeg-macos-x64.zip
+          retention-days: 7
+
+      - name: Upload configure help
+        uses: actions/upload-artifact@v4
+        with:
+          name: configure-help-macos-x64
+          path: ${{ github.workspace }}/configure-help-macos-x64.txt
+          retention-days: 7

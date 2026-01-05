@@ -1,9 +1,10 @@
-name: ReleaseJar
+name: Build Test
 
 on:
   push:
-    tags:
-      - "*"
+    branches: [ "main", "3.0.x"]
+  pull_request:
+    branches: [ "main", "3.0.x" ]
 
 permissions:
   contents: read
@@ -18,11 +19,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Checkout tools repository (sibling ../tools)
+      - name: Checkout tools repository
         uses: actions/checkout@v3
         with:
           repository: WaterMediaTeam/tools
-          path: ../tools
+          path: tools
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up JDK (21)
@@ -41,8 +42,5 @@ jobs:
           gradle --version
           java -version
 
-      - name: Release on CurseForge and Modrinth
-        run: gradle publishMods
-        env:
-          CURSEFORGE_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
-          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+      - name: Build
+        run: gradle build

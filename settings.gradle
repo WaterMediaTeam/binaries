@@ -7,4 +7,5 @@ pluginManagement {
 
 rootProject.name = 'binaries'
 
-includeBuild("../tools")
+def toolsPath = System.getenv('CI') ? 'tools' : '../tools'
+includeBuild(toolsPath)
