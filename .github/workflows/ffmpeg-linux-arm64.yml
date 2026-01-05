@@ -93,7 +93,6 @@ jobs:
             libmysofa-dev \
             librsvg2-dev \
             libtesseract-dev \
-            libpulse-dev \
             libdrm-dev \
             libva-dev \
             libvdpau-dev \
@@ -233,8 +232,7 @@ jobs:
             --enable-libopenjpeg \
             --enable-libopenmpt \
             --enable-libopus \
-            
-            --enable-libpulse \
+          
             --enable-librav1e \
             --enable-librsvg \
             --enable-librubberband \
@@ -261,8 +259,8 @@ jobs:
             --enable-libjxl \
             --enable-gnutls \
             --enable-opencl \
-            
-            
+          
+          
             --enable-vaapi \
             --enable-vdpau \
             --enable-libdrm
