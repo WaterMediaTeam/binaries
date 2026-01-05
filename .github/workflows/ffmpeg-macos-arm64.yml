@@ -1,0 +1,195 @@
+name: FFmpeg macOS ARM64
+
+on:
+  workflow_call:
+    inputs:
+      ffmpeg_version:
+        required: true
+        type: string
+
+env:
+  FFMPEG_VERSION: ${{ inputs.ffmpeg_version }}
+
+jobs:
+  build:
+    runs-on: macos-15
+    name: Build macOS ARM64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Install dependencies
+        run: |
+          set -x
+          eval "$(brew shellenv)"
+          brew update || true
+          
+          # Install in batches
+          echo "Installing build tools..."
+          brew install nasm yasm pkg-config cmake meson ninja texinfo wget zip || true
+          
+          echo "Installing core video codecs..."
+          brew install x264 x265 libvpx theora xvid aom dav1d rav1e svt-av1 || true
+          
+          echo "Installing audio codecs..."
+          brew install fdk-aac lame opus libvorbis speex two-lame libgsm || true
+          
+          echo "Installing text/subtitle libraries..."
+          brew install libass freetype fontconfig fribidi harfbuzz || true
+          
+          echo "Installing format/container libraries..."
+          brew install libbluray webp openjpeg snappy libxml2 xz || true
+          
+          echo "Installing network/streaming libraries..."
+          brew install gnutls srt libssh librist || true
+          
+          echo "Installing filter/processing libraries..."
+          brew install libsoxr libvidstab zimg zeromq rubberband || true
+          
+          echo "Installing additional libraries..."
+          brew install sdl2 openal-soft libbs2b libcaca jack game-music-emu \
+                       libopenmpt libmodplug libmysofa librsvg tesseract \
+                       libplacebo vulkan-headers vulkan-loader molten-vk shaderc libvmaf jpeg-xl || true
+          
+          echo "Homebrew installation complete"
+          brew list
+
+      - name: Download FFmpeg source
+        run: |
+          curl -L "https://ffmpeg.org/releases/ffmpeg-${{ env.FFMPEG_VERSION }}.tar.xz" -o ffmpeg.tar.xz
+          tar -xf ffmpeg.tar.xz
+          mv ffmpeg-${{ env.FFMPEG_VERSION }} ffmpeg-src
+
+      - name: Configure FFmpeg
+        working-directory: ffmpeg-src
+        run: |
+          set -x
+          eval "$(brew shellenv)"
+          
+          BREW_PREFIX="$(brew --prefix)"
+          echo "Homebrew prefix: $BREW_PREFIX"
+          
+          # Build PKG_CONFIG_PATH and collect include/lib paths for keg-only packages
+          PKG_PATHS=""
+          EXTRA_CFLAGS=""
+          EXTRA_LDFLAGS=""
+          
+          for pkg in aom dav1d libvmaf x264 x265 libvpx opus libvorbis libass \
+                     freetype fontconfig fribidi harfbuzz gnutls srt libssh \
+                     rav1e svt-av1 fdk-aac lame speex libsoxr libvidstab \
+                     zimg zeromq openjpeg openal-soft rubberband vulkan-loader \
+                     tesseract libplacebo shaderc librist sdl2 webp snappy \
+                     libbluray game-music-emu libopenmpt libmodplug \
+                     librsvg two-lame libgsm jpeg-xl jack theora xvid; do
+            # Check if package is installed first
+            if brew --prefix "$pkg" &>/dev/null; then
+              PKG_PREFIX="$(brew --prefix "$pkg")"
+              PKG_DIR="$PKG_PREFIX/lib/pkgconfig"
+              if [ -d "$PKG_DIR" ]; then
+                PKG_PATHS="$PKG_DIR:$PKG_PATHS"
+              fi
+              # Add include and lib paths for keg-only packages
+              if [ -d "$PKG_PREFIX/include" ]; then
+                EXTRA_CFLAGS="$EXTRA_CFLAGS -I$PKG_PREFIX/include"
+              fi
+              if [ -d "$PKG_PREFIX/lib" ]; then
+                EXTRA_LDFLAGS="$EXTRA_LDFLAGS -L$PKG_PREFIX/lib"
+              fi
+            fi
+          done
+          export PKG_CONFIG_PATH="$PKG_PATHS$BREW_PREFIX/lib/pkgconfig:$BREW_PREFIX/share/pkgconfig"
+          
+          echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH"
+          echo "EXTRA_CFLAGS=$EXTRA_CFLAGS"
+          echo "EXTRA_LDFLAGS=$EXTRA_LDFLAGS"
+          
+          # Verify key packages
+          pkg-config --modversion aom && echo "✓ aom" || echo "✗ aom"
+          pkg-config --modversion libass && echo "✓ libass" || echo "✗ libass"
+          pkg-config --modversion openal && echo "✓ openal" || echo "✗ openal"
+          
+          ./configure \
+            --prefix="${{ github.workspace }}/ffmpeg-build" \
+            --enable-gpl \
+            --enable-version3 \
+            --enable-nonfree \
+            --enable-shared \
+            --disable-static \
+            --enable-pic \
+            --enable-pthreads \
+            --disable-doc \
+            --disable-htmlpages \
+            --disable-manpages \
+            --disable-podpages \
+            --disable-txtpages \
+            --disable-debug \
+            --enable-videotoolbox \
+            --enable-audiotoolbox \
+            --enable-metal \
+            --enable-libaom \
+            --enable-libass \
+            --enable-libdav1d \
+            --enable-libfdk-aac \
+            --enable-libfontconfig \
+            --enable-libfreetype \
+            --enable-libfribidi \
+            --enable-libharfbuzz \
+            --enable-libmp3lame \
+            --enable-libopus \
+            --enable-libvorbis \
+            --enable-libvpx \
+            --enable-libx264 \
+            --enable-libx265 \
+            --enable-libtheora \
+            --enable-libwebp \
+            --enable-libxml2 \
+            --enable-gnutls \
+            --enable-openal \
+            --enable-vulkan \
+            --extra-cflags="-I$BREW_PREFIX/include $EXTRA_CFLAGS" \
+            --extra-ldflags="-L$BREW_PREFIX/lib $EXTRA_LDFLAGS"
+
+      - name: Build FFmpeg
+        working-directory: ffmpeg-src
+        run: |
+          eval "$(brew shellenv)"
+          make -j$(sysctl -n hw.ncpu)
+          make install
+
+      - name: Test binaries
+        run: |
+          echo "Testing FFmpeg binaries..."
+          ${{ github.workspace }}/ffmpeg-build/bin/ffmpeg -version
+          ${{ github.workspace }}/ffmpeg-build/bin/ffprobe -version
+          echo "Binary test passed!"
+
+      - name: Package binaries
+        run: |
+          cd "${{ github.workspace }}/ffmpeg-build"
+          mkdir -p package
+          
+          # Copy dylibs
+          cp lib/*.dylib package/ 2>/dev/null || true
+          
+          # Create version.cfg
+          echo "${{ env.FFMPEG_VERSION }}" > package/version.cfg
+          
+          # Create zip
+          cd package
+          zip -r ../ffmpeg-macos-arm64.zip .
+          
+          echo "Package contents:"
+          ls -la
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-macos-arm64
+          path: ${{ github.workspace }}/ffmpeg-build/ffmpeg-macos-arm64.zip
+          retention-days: 7

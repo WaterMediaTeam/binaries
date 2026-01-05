@@ -1,0 +1,191 @@
+name: FFmpeg Windows ARM64
+
+on:
+  workflow_call:
+    inputs:
+      ffmpeg_version:
+        required: true
+        type: string
+
+env:
+  FFMPEG_VERSION: ${{ inputs.ffmpeg_version }}
+
+jobs:
+  build:
+    runs-on: windows-11-arm
+    name: Build Windows ARM64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: CLANGARM64
+          update: true
+          install: >-
+            base-devel
+            mingw-w64-clang-aarch64-toolchain
+            mingw-w64-clang-aarch64-pkgconf
+            mingw-w64-clang-aarch64-libwinpthread
+            zip
+            wget
+            git
+            mingw-w64-clang-aarch64-aom
+            mingw-w64-clang-aarch64-dav1d
+            mingw-w64-clang-aarch64-libx264
+            mingw-w64-clang-aarch64-x265
+            mingw-w64-clang-aarch64-libvpx
+            mingw-w64-clang-aarch64-libtheora
+            mingw-w64-clang-aarch64-libvorbis
+            mingw-w64-clang-aarch64-opus
+            mingw-w64-clang-aarch64-lame
+            mingw-w64-clang-aarch64-fdk-aac
+            mingw-w64-clang-aarch64-speex
+            mingw-w64-clang-aarch64-libwebp
+            mingw-w64-clang-aarch64-openjpeg2
+            mingw-w64-clang-aarch64-libass
+            mingw-w64-clang-aarch64-freetype
+            mingw-w64-clang-aarch64-fontconfig
+            mingw-w64-clang-aarch64-fribidi
+            mingw-w64-clang-aarch64-harfbuzz
+            mingw-w64-clang-aarch64-gnutls
+            mingw-w64-clang-aarch64-SDL2
+            mingw-w64-clang-aarch64-zimg
+            mingw-w64-clang-aarch64-libxml2
+            mingw-w64-clang-aarch64-openal
+            mingw-w64-clang-aarch64-snappy
+            mingw-w64-clang-aarch64-xz
+            mingw-w64-clang-aarch64-bzip2
+            mingw-w64-clang-aarch64-zlib
+
+      - name: Download FFmpeg source
+        shell: msys2 {0}
+        run: |
+          curl -L "https://ffmpeg.org/releases/ffmpeg-${{ env.FFMPEG_VERSION }}.tar.xz" -o ffmpeg.tar.xz
+          tar -xf ffmpeg.tar.xz
+          mv ffmpeg-${{ env.FFMPEG_VERSION }} ffmpeg-src
+
+      - name: Configure FFmpeg
+        shell: msys2 {0}
+        run: |
+          cd ffmpeg-src
+          ./configure \
+            --prefix="${{ github.workspace }}/ffmpeg-build" \
+            --enable-gpl \
+            --enable-version3 \
+            --enable-nonfree \
+            --enable-shared \
+            --disable-static \
+            --enable-pic \
+            --enable-w32threads \
+            --disable-x86asm \
+            --cc=clang \
+            --cxx=clang++ \
+            --disable-doc \
+            --disable-htmlpages \
+            --disable-manpages \
+            --disable-podpages \
+            --disable-txtpages \
+            --disable-debug \
+            --enable-libaom \
+            --enable-libass \
+            --enable-libdav1d \
+            --enable-libfdk-aac \
+            --enable-libfontconfig \
+            --enable-libfreetype \
+            --enable-libfribidi \
+            --enable-libharfbuzz \
+            --enable-libmp3lame \
+            --enable-libopenjpeg \
+            --enable-libopus \
+            --enable-libspeex \
+            --enable-libtheora \
+            --enable-libvorbis \
+            --enable-libvpx \
+            --enable-libwebp \
+            --enable-libx264 \
+            --enable-libx265 \
+            --enable-libxml2 \
+            --enable-libzimg \
+            --enable-gnutls \
+            --enable-openal \
+            --enable-d3d11va
+
+      - name: Build FFmpeg
+        shell: msys2 {0}
+        run: |
+          cd ffmpeg-src
+          make -j$(nproc)
+          make install
+
+      - name: Test binaries
+        shell: msys2 {0}
+        run: |
+          echo "Testing FFmpeg binaries..."
+          # Convert Windows path to Unix path for MSYS2
+          WORKSPACE=$(cygpath -u "${{ github.workspace }}")
+          "${WORKSPACE}/ffmpeg-build/bin/ffmpeg.exe" -version
+          "${WORKSPACE}/ffmpeg-build/bin/ffprobe.exe" -version
+          echo "Binary test passed!"
+
+      - name: Package binaries
+        shell: msys2 {0}
+        run: |
+          set -x
+          WORKSPACE=$(cygpath -u "${{ github.workspace }}")
+          cd "${WORKSPACE}/ffmpeg-build"
+          
+          echo "Contents of ffmpeg-build:"
+          ls -la
+          ls -la bin/ || echo "No bin directory"
+          
+          mkdir -p package
+          
+          # Copy FFmpeg DLLs and EXEs
+          cp bin/*.dll package/ 2>/dev/null || true
+          cp bin/*.exe package/ 2>/dev/null || true
+          
+          # Copy dependency DLLs from MSYS2 (iterate until no new deps found)
+          for iteration in 1 2 3 4 5; do
+            echo "=== Dependency iteration $iteration ==="
+            BEFORE=$(ls package/*.dll 2>/dev/null | wc -l)
+          
+            for dll in package/*.dll; do
+              [ -f "$dll" ] || continue
+              ldd "$dll" 2>/dev/null | grep -i clangarm64 | awk '{print $3}' | while read -r dep; do
+                if [ -n "$dep" ] && [ -f "$dep" ]; then
+                  base=$(basename "$dep")
+                  if [ ! -f "package/$base" ]; then
+                    cp "$dep" package/ 2>/dev/null || true
+                  fi
+                fi
+              done
+            done
+          
+            AFTER=$(ls package/*.dll 2>/dev/null | wc -l)
+            echo "DLLs before: $BEFORE, after: $AFTER"
+            [ "$BEFORE" -eq "$AFTER" ] && break
+          done
+          
+          # Create version.cfg
+          echo "${{ env.FFMPEG_VERSION }}" > package/version.cfg
+          
+          echo "Package contents:"
+          ls package/ | head -50
+          echo "Total files: $(ls package/ | wc -l)"
+          
+          # Create zip
+          cd package
+          zip -r ../ffmpeg-windows-arm64.zip .
+          
+          echo "Zip created:"
+          ls -la ../ffmpeg-windows-arm64.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-windows-arm64
+          path: ${{ github.workspace }}/ffmpeg-build/ffmpeg-windows-arm64.zip
+          retention-days: 7
