@@ -109,7 +109,7 @@ jobs:
             --enable-libxml2 \
             --enable-libzimg \
             --enable-gnutls \
-            
+          
             --enable-d3d11va
 
       - name: Build FFmpeg
@@ -136,51 +136,48 @@ jobs:
           WORKSPACE=$(cygpath -u "${{ github.workspace }}")
           cd "${WORKSPACE}/ffmpeg-build"
           
-          echo "Contents of ffmpeg-build:"
-          ls -la
-          ls -la bin/ || echo "No bin directory"
-          
           mkdir -p package
           
           # Copy FFmpeg DLLs and EXEs
           cp bin/*.dll package/ 2>/dev/null || true
           cp bin/*.exe package/ 2>/dev/null || true
           
-          # Copy dependency DLLs from MSYS2 (iterate until no new deps found)
-          for iteration in 1 2 3 4 5; do
-            echo "=== Dependency iteration $iteration ==="
-            BEFORE=$(ls package/*.dll 2>/dev/null | wc -l)
-            
+          echo "Initial DLLs: $(ls package/*.dll 2>/dev/null | wc -l)"
+          
+          # Collect all MSYS2 dependencies iteratively
+          for i in 1 2 3 4 5; do
+            echo "=== Pass $i ==="
+            found=0
+          
             for dll in package/*.dll; do
               [ -f "$dll" ] || continue
-              ldd "$dll" 2>/dev/null | grep -i clangarm64 | awk '{print $3}' | while read -r dep; do
-                if [ -n "$dep" ] && [ -f "$dep" ]; then
-                  base=$(basename "$dep")
-                  if [ ! -f "package/$base" ]; then
-                    cp "$dep" package/ 2>/dev/null || true
-                  fi
+          
+              # Get dependencies - use grep || true properly
+              deps=$(ldd "$dll" 2>/dev/null | { grep -i clangarm64 || true; } | awk '{print $3}')
+          
+              for dep in $deps; do
+                [ -z "$dep" ] && continue
+                [ ! -f "$dep" ] && continue
+          
+                base=$(basename "$dep")
+                if [ ! -f "package/$base" ]; then
+                  cp "$dep" package/ && found=1
                 fi
               done
             done
-            
-            AFTER=$(ls package/*.dll 2>/dev/null | wc -l)
-            echo "DLLs before: $BEFORE, after: $AFTER"
-            [ "$BEFORE" -eq "$AFTER" ] && break
+          
+            echo "DLLs after pass $i: $(ls package/*.dll 2>/dev/null | wc -l)"
+            [ "$found" -eq 0 ] && break
           done
           
-          # Create version.cfg
+          # Version file
           echo "${{ env.FFMPEG_VERSION }}" > package/version.cfg
           
-          echo "Package contents:"
-          ls package/ | head -50
-          echo "Total files: $(ls package/ | wc -l)"
+          echo "Final contents: $(ls package/ | wc -l) files"
           
           # Create zip
           cd package
           zip -r ../ffmpeg-windows-arm64.zip .
-          
-          echo "Zip created:"
-          ls -la ../ffmpeg-windows-arm64.zip
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
