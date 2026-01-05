@@ -54,7 +54,6 @@ jobs:
           
           echo "Installing additional libraries..."
           brew install sdl2 libbs2b libcaca jack game-music-emu \
-                       libopenmpt libmodplug libmysofa librsvg tesseract \
           
           echo "Homebrew installation complete"
           brew list
@@ -148,8 +147,8 @@ jobs:
             --enable-libwebp \
             --enable-libxml2 \
             --enable-gnutls \
-            
-            
+          
+          
             --extra-cflags="-I$BREW_PREFIX/include $EXTRA_CFLAGS" \
             --extra-ldflags="-L$BREW_PREFIX/lib $EXTRA_LDFLAGS"
 
