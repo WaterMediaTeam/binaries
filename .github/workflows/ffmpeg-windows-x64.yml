@@ -73,10 +73,7 @@ jobs:
             mingw-w64-ucrt-x86_64-librsvg
             mingw-w64-ucrt-x86_64-libxml2
             mingw-w64-ucrt-x86_64-libcaca
-            mingw-w64-ucrt-x86_64-openal
             mingw-w64-ucrt-x86_64-frei0r-plugins
-            mingw-w64-ucrt-x86_64-vulkan-headers
-            mingw-w64-ucrt-x86_64-vulkan
             mingw-w64-ucrt-x86_64-shaderc
             mingw-w64-ucrt-x86_64-liblc3
             mingw-w64-ucrt-x86_64-snappy
@@ -152,8 +149,8 @@ jobs:
             --enable-libzimg \
             --enable-libzvbi \
             --enable-gnutls \
-            --enable-openal \
-            --enable-vulkan \
+            
+            
             --enable-libshaderc \
             --enable-d3d11va \
             --enable-dxva2
@@ -196,7 +193,7 @@ jobs:
           for iteration in 1 2 3 4 5; do
             echo "=== Dependency iteration $iteration ==="
             BEFORE=$(ls package/*.dll 2>/dev/null | wc -l)
-          
+            
             for dll in package/*.dll; do
               [ -f "$dll" ] || continue
               ldd "$dll" 2>/dev/null | grep -i ucrt64 | awk '{print $3}' | while read -r dep; do
@@ -208,7 +205,7 @@ jobs:
                 fi
               done
             done
-          
+            
             AFTER=$(ls package/*.dll 2>/dev/null | wc -l)
             echo "DLLs before: $BEFORE, after: $AFTER"
             [ "$BEFORE" -eq "$AFTER" ] && break

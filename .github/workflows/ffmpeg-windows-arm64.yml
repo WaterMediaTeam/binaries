@@ -54,7 +54,6 @@ jobs:
             mingw-w64-clang-aarch64-SDL2
             mingw-w64-clang-aarch64-zimg
             mingw-w64-clang-aarch64-libxml2
-            mingw-w64-clang-aarch64-openal
             mingw-w64-clang-aarch64-snappy
             mingw-w64-clang-aarch64-xz
             mingw-w64-clang-aarch64-bzip2
@@ -110,7 +109,7 @@ jobs:
             --enable-libxml2 \
             --enable-libzimg \
             --enable-gnutls \
-            --enable-openal \
+            
             --enable-d3d11va
 
       - name: Build FFmpeg
@@ -151,7 +150,7 @@ jobs:
           for iteration in 1 2 3 4 5; do
             echo "=== Dependency iteration $iteration ==="
             BEFORE=$(ls package/*.dll 2>/dev/null | wc -l)
-          
+            
             for dll in package/*.dll; do
               [ -f "$dll" ] || continue
               ldd "$dll" 2>/dev/null | grep -i clangarm64 | awk '{print $3}' | while read -r dep; do
@@ -163,7 +162,7 @@ jobs:
                 fi
               done
             done
-          
+            
             AFTER=$(ls package/*.dll 2>/dev/null | wc -l)
             echo "DLLs before: $BEFORE, after: $AFTER"
             [ "$BEFORE" -eq "$AFTER" ] && break

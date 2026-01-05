@@ -26,11 +26,6 @@ jobs:
           sudo rm -rf /usr/local/share/boost
           df -h
 
-      - name: Install Vulkan SDK
-        uses: humbletim/install-vulkan-sdk@v1.2
-        with:
-          version: latest
-          cache: true
 
       - name: Install dependencies
         run: |
@@ -90,7 +85,6 @@ jobs:
             liblzma-dev \
             libsnappy-dev \
             libopenjp2-7-dev \
-            libopenal-dev \
             ocl-icd-opencl-dev \
             libbs2b-dev \
             libcaca-dev \
@@ -99,11 +93,6 @@ jobs:
             libmysofa-dev \
             librsvg2-dev \
             libtesseract-dev \
-            libplacebo-dev \
-            glslang-dev \
-            glslang-tools \
-            spirv-tools \
-            libshaderc-dev \
             libpulse-dev \
             libdrm-dev \
             libva-dev \
@@ -201,22 +190,8 @@ jobs:
       - name: Configure FFmpeg
         working-directory: ffmpeg-src
         run: |
-          # Add Vulkan SDK paths
-          if [ -n "$VULKAN_SDK" ]; then
-            export PKG_CONFIG_PATH="$VULKAN_SDK/lib/pkgconfig:/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
-            export LD_LIBRARY_PATH="$VULKAN_SDK/lib:/usr/local/lib:$LD_LIBRARY_PATH"
-            VULKAN_CFLAGS="-I$VULKAN_SDK/include"
-            VULKAN_LDFLAGS="-L$VULKAN_SDK/lib"
-          else
-            export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
-            export LD_LIBRARY_PATH="/usr/local/lib:$LD_LIBRARY_PATH"
-            VULKAN_CFLAGS=""
-            VULKAN_LDFLAGS=""
-          fi
-          
-          echo "VULKAN_SDK=$VULKAN_SDK"
-          echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH"
-          pkg-config --modversion vulkan && echo "✓ vulkan found" || echo "✗ vulkan not found"
+          export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
+          export LD_LIBRARY_PATH="/usr/local/lib:$LD_LIBRARY_PATH"
           
           ./configure \
             --prefix="${{ github.workspace }}/ffmpeg-build" \
@@ -233,8 +208,6 @@ jobs:
             --disable-podpages \
             --disable-txtpages \
             --disable-debug \
-            --extra-cflags="$VULKAN_CFLAGS" \
-            --extra-ldflags="$VULKAN_LDFLAGS" \
             --enable-chromaprint \
             --enable-frei0r \
             --enable-ladspa \
@@ -260,7 +233,7 @@ jobs:
             --enable-libopenjpeg \
             --enable-libopenmpt \
             --enable-libopus \
-            --enable-libplacebo \
+            
             --enable-libpulse \
             --enable-librav1e \
             --enable-librsvg \
@@ -287,10 +260,9 @@ jobs:
             --enable-libzmq \
             --enable-libjxl \
             --enable-gnutls \
-            --enable-openal \
             --enable-opencl \
-            --enable-vulkan \
-            --enable-libshaderc \
+            
+            
             --enable-vaapi \
             --enable-vdpau \
             --enable-libdrm

@@ -53,9 +53,8 @@ jobs:
           brew install libsoxr libvidstab zimg zeromq rubberband || true
           
           echo "Installing additional libraries..."
-          brew install sdl2 openal-soft libbs2b libcaca jack game-music-emu \
+          brew install sdl2 libbs2b libcaca jack game-music-emu \
                        libopenmpt libmodplug libmysofa librsvg tesseract \
-                       libplacebo vulkan-headers vulkan-loader molten-vk shaderc libvmaf jpeg-xl || true
           
           echo "Homebrew installation complete"
           brew list
@@ -83,7 +82,7 @@ jobs:
           for pkg in aom dav1d libvmaf x264 x265 libvpx opus libvorbis libass \
                      freetype fontconfig fribidi harfbuzz gnutls srt libssh \
                      rav1e svt-av1 fdk-aac lame speex libsoxr libvidstab \
-                     zimg zeromq openjpeg openal-soft rubberband vulkan-loader \
+                     zimg zeromq openjpeg rubberband \
                      tesseract libplacebo shaderc librist sdl2 webp snappy \
                      libbluray game-music-emu libopenmpt libmodplug \
                      librsvg two-lame libgsm jpeg-xl jack theora xvid; do
@@ -112,7 +111,6 @@ jobs:
           # Verify key packages
           pkg-config --modversion aom && echo "✓ aom" || echo "✗ aom"
           pkg-config --modversion libass && echo "✓ libass" || echo "✗ libass"
-          pkg-config --modversion openal && echo "✓ openal" || echo "✗ openal"
           
           ./configure \
             --prefix="${{ github.workspace }}/ffmpeg-build" \
@@ -150,8 +148,8 @@ jobs:
             --enable-libwebp \
             --enable-libxml2 \
             --enable-gnutls \
-            --enable-openal \
-            --enable-vulkan \
+            
+            
             --extra-cflags="-I$BREW_PREFIX/include $EXTRA_CFLAGS" \
             --extra-ldflags="-L$BREW_PREFIX/lib $EXTRA_LDFLAGS"
 
