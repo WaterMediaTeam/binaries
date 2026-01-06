@@ -6,13 +6,6 @@ on:
       ffmpeg_version:
         required: true
         type: string
-  workflow_dispatch:
-    inputs:
-      ffmpeg_version:
-        description: 'FFmpeg version to build'
-        required: true
-        default: '7.1.3'
-        type: string
 
 env:
   FFMPEG_VERSION: ${{ inputs.ffmpeg_version }}
@@ -25,10 +18,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-
-      - name: Setup 7-Zip
-        uses: milliewalky/setup-7-zip@v2
 
       - name: Free disk space
         run: |
@@ -44,7 +33,7 @@ jobs:
           sudo apt-get upgrade
           sudo apt-get install -y \
             build-essential nasm yasm pkg-config git cmake meson ninja-build \
-            texinfo wget curl python3 \
+            texinfo wget curl zip python3 \
             libx264-dev libx265-dev libvpx-dev libmp3lame-dev \
             libopus-dev libvorbis-dev libtheora-dev libass-dev libfreetype-dev \
             libfontconfig1-dev libfribidi-dev libharfbuzz-dev libgnutls28-dev \
@@ -59,10 +48,20 @@ jobs:
             ladspa-sdk libopencore-amrnb-dev libopencore-amrwb-dev libjxl-dev \
             libshine-dev libcodec2-dev libopenh264-dev \
             libvo-amrwbenc-dev librist-dev liblilv-dev lv2-dev \
-            libgmp-dev libssl-dev frei0r-plugins-dev libtesseract-dev libmodplug-dev \
-            libopenmpt-dev liblcms2-dev librtmp-dev
+            libgmp-dev libssl-dev
+
+      - name: Cache compiled dependencies
+        uses: actions/cache@v4
+        id: cache-deps
+        with:
+          path: |
+            /usr/local/lib
+            /usr/local/include
+            /usr/local/lib/pkgconfig
+          key: linux-arm64-deps-v3-${{ hashFiles('.github/workflows/ffmpeg-linux-arm64.yml') }}
 
       - name: Build libvmaf from source
+        if: steps.cache-deps.outputs.cache-hit != 'true'
         run: |
           git clone --depth 1 https://github.com/Netflix/vmaf.git
           cd vmaf/libvmaf
@@ -72,9 +71,11 @@ jobs:
           sudo ldconfig
 
       - name: Setup Rust toolchain
+        if: steps.cache-deps.outputs.cache-hit != 'true'
         uses: dtolnay/rust-toolchain@stable
 
       - name: Build rav1e from source
+        if: steps.cache-deps.outputs.cache-hit != 'true'
         run: |
           cargo install cargo-c
           git clone --depth 1 --branch v0.7.1 https://github.com/xiph/rav1e.git
@@ -94,6 +95,7 @@ jobs:
           pkg-config --modversion rav1e && echo "rav1e installed successfully"
 
       - name: Build SVT-AV1 from source
+        if: steps.cache-deps.outputs.cache-hit != 'true'
         run: |
           git clone --depth 1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
           cd SVT-AV1/Build
@@ -103,6 +105,7 @@ jobs:
           sudo ldconfig
 
       - name: Build kvazaar from source
+        if: steps.cache-deps.outputs.cache-hit != 'true'
         run: |
           git clone https://github.com/ultravideo/kvazaar.git
           cd kvazaar/build
@@ -111,11 +114,22 @@ jobs:
           sudo make install
           sudo ldconfig
 
+      - name: Restore cached libraries
+        if: steps.cache-deps.outputs.cache-hit == 'true'
+        run: |
+          sudo ldconfig
+          echo "Using cached dependencies"
+
       - name: Download FFmpeg source
         run: |
           curl -L "https://ffmpeg.org/releases/ffmpeg-${{ env.FFMPEG_VERSION }}.tar.xz" -o ffmpeg.tar.xz
           tar -xf ffmpeg.tar.xz
           mv ffmpeg-${{ env.FFMPEG_VERSION }} ffmpeg-src
+
+      - name: Save configure help
+        working-directory: ffmpeg-src
+        run: |
+          ./configure --help > "${{ github.workspace }}/configure-help-linux-arm64.txt"
 
       - name: Configure FFmpeg
         working-directory: ffmpeg-src
@@ -197,10 +211,7 @@ jobs:
             --enable-vaapi \
             --enable-vdpau \
             --enable-libdrm \
-            --enable-v4l2-m2m \
-            
-            --enable-lcms2 \
-            --enable-librtmp
+            --enable-v4l2-m2m
 
       - name: Build FFmpeg
         working-directory: ffmpeg-src
@@ -223,11 +234,18 @@ jobs:
           cp lib/*.so* package/ 2>/dev/null || true
           echo "${{ env.FFMPEG_VERSION }}" > package/version.cfg
           cd package
-          7z a -tzip -mx=9 ../ffmpeg-linux-arm64.zip .
+          zip -r ../ffmpeg-linux-arm64.zip .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ffmpeg-linux-arm64
           path: ${{ github.workspace }}/ffmpeg-build/ffmpeg-linux-arm64.zip
+          retention-days: 7
+
+      - name: Upload configure help
+        uses: actions/upload-artifact@v4
+        with:
+          name: configure-help-linux-arm64
+          path: ${{ github.workspace }}/configure-help-linux-arm64.txt
           retention-days: 7
