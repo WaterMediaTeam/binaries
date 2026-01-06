@@ -134,7 +134,12 @@ jobs:
           export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
           export LD_LIBRARY_PATH="/usr/local/lib:$LD_LIBRARY_PATH"
           
+          # JNI headers path
+          JAVA_HOME="${JAVA_HOME:-$(dirname $(dirname $(readlink -f $(which java))))}"
+          JNI_INCLUDE="-I$JAVA_HOME/include -I$JAVA_HOME/include/linux"
+          
           ./configure \
+            --extra-cflags="$JNI_INCLUDE" \
             --prefix="${{ github.workspace }}/ffmpeg-build" \
             --enable-gpl \
             --enable-version3 \

@@ -93,7 +93,12 @@ jobs:
         run: |
           cd ffmpeg-src
           
+          # JNI headers path
+          JAVA_HOME_MSYS=$(cygpath -u "$JAVA_HOME")
+          JNI_INCLUDE="-I$JAVA_HOME_MSYS/include -I$JAVA_HOME_MSYS/include/win32"
+          
           ./configure \
+            --extra-cflags="$JNI_INCLUDE" \
             --cc=clang \
             --cxx=clang++ \
             --prefix="${{ github.workspace }}/ffmpeg-build" \

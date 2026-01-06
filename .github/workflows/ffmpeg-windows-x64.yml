@@ -112,7 +112,13 @@ jobs:
         shell: msys2 {0}
         run: |
           cd ffmpeg-src
+          
+          # JNI headers path
+          JAVA_HOME_MSYS=$(cygpath -u "$JAVA_HOME")
+          JNI_INCLUDE="-I$JAVA_HOME_MSYS/include -I$JAVA_HOME_MSYS/include/win32"
+          
           ./configure \
+            --extra-cflags="$JNI_INCLUDE" \
             --prefix="${{ github.workspace }}/ffmpeg-build" \
             --enable-gpl \
             --enable-version3 \
