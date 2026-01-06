@@ -124,10 +124,11 @@ jobs:
           ls -la "$JAVA_HOME_MSYS/include/win32/" || echo "win32 include dir not found"
           
           JNI_CFLAGS="-I$JAVA_HOME_MSYS/include -I$JAVA_HOME_MSYS/include/win32"
-          echo "JNI_CFLAGS: $JNI_CFLAGS"
+          JNI_LDFLAGS="-L$JAVA_HOME/lib/server -ljvm"
           
           ./configure \
             --extra-cflags="$JNI_CFLAGS" \
+            --extra-ldflags="$JNI_LDFLAGS" \
             --prefix="${{ github.workspace }}/ffmpeg-build" \
             --enable-gpl \
             --enable-version3 \

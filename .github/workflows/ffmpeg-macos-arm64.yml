@@ -94,6 +94,7 @@ jobs:
           ls -la "$JAVA_HOME/include/" || echo "Include dir not found"
           
           JNI_CFLAGS="-I$JAVA_HOME/include -I$JAVA_HOME/include/darwin"
+          JNI_LDFLAGS="-L$JAVA_HOME/lib/server -ljvm"
           echo "JNI_CFLAGS: $JNI_CFLAGS"
           
           ./configure \
@@ -162,7 +163,7 @@ jobs:
             --enable-librtmp \
             --enable-libtesseract \
             --extra-cflags="$EXTRA_CFLAGS $JNI_CFLAGS" \
-            --extra-ldflags="$EXTRA_LDFLAGS"
+            --extra-ldflags="$EXTRA_LDFLAGS $JNI_LDFLAGS"
 
       - name: Build FFmpeg
         working-directory: ffmpeg-src
