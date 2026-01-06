@@ -31,10 +31,10 @@ jobs:
           java-version: '21'
           distribution: 'microsoft'
 
-      - name: Set up Gradle 9.0.0
+      - name: Set up Gradle 9.2.1
         uses: gradle/gradle-build-action@v2
         with:
-          gradle-version: '9.0.0'
+          gradle-version: '9.2.1'
 
       - name: Show Gradle & Java versions
         run: |
