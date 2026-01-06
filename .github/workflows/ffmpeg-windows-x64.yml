@@ -159,7 +159,8 @@ jobs:
             --enable-cuda \
             --enable-cuvid \
             --enable-nvdec \
-            --enable-nvenc
+            --enable-nvenc \
+            --enable-jni
 
       - name: Build FFmpeg
         shell: msys2 {0}

@@ -223,7 +223,8 @@ jobs:
             --enable-cuvid \
             --enable-nvdec \
             --enable-nvenc \
-            --enable-v4l2-m2m
+            --enable-v4l2-m2m \
+            --enable-jni
 
       - name: Build FFmpeg
         working-directory: ffmpeg-src

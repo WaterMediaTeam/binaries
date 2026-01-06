@@ -125,7 +125,8 @@ jobs:
             --enable-openssl \
             --enable-gmp \
             --enable-d3d11va \
-            --enable-dxva2
+            --enable-dxva2 \
+            --enable-jni
 
       - name: Build FFmpeg
         shell: msys2 {0}
