@@ -25,7 +25,7 @@ jobs:
           brew upgrade
           brew install \
             nasm yasm pkg-config cmake meson ninja \
-            x264 x265 libvpx lame opus libvorbis libtheora \
+            x264 x265 libvpx lame opus libvorbis theora \
             libass freetype fontconfig fribidi harfbuzz gnutls \
             sdl2 aom dav1d webp libsoxr zimg zeromq \
             speex two-lame libbluray libgme rubberband \
@@ -53,7 +53,7 @@ jobs:
           EXTRA_CFLAGS=""
           EXTRA_LDFLAGS=""
           
-          for pkg in x264 x265 lame opus libvorbis libtheora libass freetype fontconfig \
+          for pkg in x264 x265 lame opus libvorbis theora libass freetype fontconfig \
                      fribidi harfbuzz gnutls sdl2 aom dav1d webp libsoxr speex \
                      libbluray libgme rubberband srt libssh libxml2 snappy openjpeg \
                      libbs2b rav1e svt-av1 jpeg-xl librsvg xvid opencore-amr \
