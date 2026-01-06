@@ -47,7 +47,7 @@ jobs:
             libxcb-xfixes0-dev libxvidcore-dev libchromaprint-dev frei0r-plugins-dev \
             ladspa-sdk libopencore-amrnb-dev libopencore-amrwb-dev libjxl-dev \
             libshine-dev libcodec2-dev libopenh264-dev \
-            libvo-amrwbenc-dev librist-dev liblensfun-dev liblilv-dev lv2-dev \
+            libvo-amrwbenc-dev librist-dev liblilv-dev lv2-dev \
             libgmp-dev libssl-dev
 
       - name: Cache compiled dependencies
@@ -114,10 +114,6 @@ jobs:
           sudo make install
           sudo ldconfig
 
-      - name: Fix pkg-config path for Lensfun
-        run: |
-          echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:${PKG_CONFIG_PATH}" >> $GITHUB_ENV
-
       - name: Restore cached libraries
         if: steps.cache-deps.outputs.cache-hit == 'true'
         run: |
@@ -173,7 +169,6 @@ jobs:
             --enable-libgsm \
             --enable-libjack \
             --enable-libkvazaar \
-            --enable-liblensfun \
             --enable-libmodplug \
             --enable-libmp3lame \
             --enable-libmysofa \
