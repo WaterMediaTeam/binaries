@@ -59,6 +59,8 @@ jobs:
 
       - name: Configure FFmpeg
         working-directory: ffmpeg-src
+        env:
+          JAVA_HOME: ${{ env.JAVA_HOME }}
         run: |
           PKG_PATHS=""
           EXTRA_CFLAGS=""
@@ -82,9 +84,17 @@ jobs:
           
           export PKG_CONFIG_PATH="$PKG_PATHS$PKG_CONFIG_PATH"
           
-          # JNI headers path
-          JAVA_HOME="${JAVA_HOME:-$(/usr/libexec/java_home)}"
-          JNI_INCLUDE="-I$JAVA_HOME/include -I$JAVA_HOME/include/darwin"
+          # JNI headers path - debug and detect
+          echo "JAVA_HOME from env: $JAVA_HOME"
+          if [ -z "$JAVA_HOME" ]; then
+            JAVA_HOME=$(/usr/libexec/java_home)
+          fi
+          echo "JAVA_HOME resolved: $JAVA_HOME"
+          echo "JNI include dir contents:"
+          ls -la "$JAVA_HOME/include/" || echo "Include dir not found"
+          
+          JNI_CFLAGS="-I$JAVA_HOME/include -I$JAVA_HOME/include/darwin"
+          echo "JNI_CFLAGS: $JNI_CFLAGS"
           
           ./configure \
             --prefix="${{ github.workspace }}/ffmpeg-build" \
@@ -151,7 +161,7 @@ jobs:
             --enable-libopenmpt \
             --enable-librtmp \
             --enable-libtesseract \
-            --extra-cflags="$EXTRA_CFLAGS $JNI_INCLUDE" \
+            --extra-cflags="$EXTRA_CFLAGS $JNI_CFLAGS" \
             --extra-ldflags="$EXTRA_LDFLAGS"
 
       - name: Build FFmpeg
