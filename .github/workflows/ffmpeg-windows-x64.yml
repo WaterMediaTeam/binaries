@@ -157,7 +157,6 @@ jobs:
             --enable-dxva2 \
             --enable-ffnvcodec \
             --enable-cuda \
-#             --enable-cuda-llvm # cannot compile in github actions
             --enable-cuvid \
             --enable-nvdec \
             --enable-nvenc
