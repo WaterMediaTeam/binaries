@@ -206,7 +206,6 @@ jobs:
             --enable-libjxl \
             --enable-lv2 \
             --enable-openssl \
-            --enable-gcrypt \
             --enable-gmp \
             --enable-opencl \
             --enable-vaapi \
