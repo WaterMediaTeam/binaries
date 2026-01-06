@@ -26,11 +26,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Microsoft JDK 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'microsoft'
-          java-version: '21'
 
       - name: Setup 7-Zip
         uses: milliewalky/setup-7-zip@v2
@@ -130,28 +125,11 @@ jobs:
 
       - name: Configure FFmpeg
         working-directory: ffmpeg-src
-        env:
-          JAVA_HOME: ${{ env.JAVA_HOME }}
         run: |
           export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
           export LD_LIBRARY_PATH="/usr/local/lib:$LD_LIBRARY_PATH"
           
-          # JNI headers path - debug and detect
-          echo "JAVA_HOME from env: $JAVA_HOME"
-          if [ -z "$JAVA_HOME" ]; then
-            JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))
-          fi
-          echo "JAVA_HOME resolved: $JAVA_HOME"
-          echo "JNI include dir contents:"
-          ls -la "$JAVA_HOME/include/" || echo "Include dir not found"
-          
-          JNI_CFLAGS="-I$JAVA_HOME/include -I$JAVA_HOME/include/linux"
-          JNI_LDFLAGS="-L$JAVA_HOME/lib/server -ljvm"
-          echo "JNI_CFLAGS: $JNI_CFLAGS"
-          
           ./configure \
-            --extra-cflags="$JNI_CFLAGS" \
-            --extra-ldflags="$JNI_LDFLAGS" \
             --prefix="${{ github.workspace }}/ffmpeg-build" \
             --enable-gpl \
             --enable-version3 \
@@ -232,7 +210,7 @@ jobs:
             --enable-nvdec \
             --enable-nvenc \
             --enable-v4l2-m2m \
-            --enable-jni \
+            
             --enable-lcms2 \
             --enable-librtmp
 
