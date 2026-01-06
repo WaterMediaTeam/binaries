@@ -12,7 +12,7 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     name: Build Linux x64
 
     steps:
@@ -46,7 +46,7 @@ jobs:
             libdrm-dev libva-dev libvdpau-dev libxcb1-dev libxcb-shm0-dev \
             libxcb-xfixes0-dev libxvidcore-dev libchromaprint-dev frei0r-plugins-dev \
             ladspa-sdk libopencore-amrnb-dev libopencore-amrwb-dev libjxl-dev \
-            libshine-dev libcodec2-dev libkvazaar-dev libopenh264-dev \
+            libshine-dev libcodec2-dev libopenh264-dev \
             libvo-amrwbenc-dev librist-dev liblensfun-dev liblilv-dev lv2-dev \
             libgmp-dev libssl-dev
 
@@ -106,6 +106,17 @@ jobs:
           git clone --depth 1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
           cd SVT-AV1/Build
           cmake .. -G"Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DBUILD_SHARED_LIBS=ON
+          make -j$(nproc)
+          sudo make install
+          sudo ldconfig
+
+      - name: Build kvazaar from source
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: |
+          git clone https://github.com/ultravideo/kvazaar.git
+          cd kvazaar
+          mkdir build && cd build
+          cmake -DCMAKE_BUILD_TYPE=Release ..
           make -j$(nproc)
           sudo make install
           sudo ldconfig
