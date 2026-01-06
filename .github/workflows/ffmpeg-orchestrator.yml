@@ -41,6 +41,7 @@ jobs:
       ffmpeg_version: ${{ inputs.ffmpeg_version }}
 
   create-pr:
+    if: always()
     needs: [linux-x64, linux-arm64, macos-x64, macos-arm64, windows-x64, windows-arm64]
     runs-on: ubuntu-latest
     name: Create Pull Request
@@ -54,79 +55,81 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download all artifacts
+      - name: Determine build results
+        id: results
+        run: |
+          PASSED=""
+          FAILED=""
+          
+          check_result() {
+            local name="$1"
+            local result="$2"
+            if [ "$result" == "success" ]; then
+              PASSED="${PASSED}- ✅ ${name}\n"
+            else
+              FAILED="${FAILED}- ❌ ${name}\n"
+            fi
+          }
+          
+          check_result "Linux x64" "${{ needs.linux-x64.result }}"
+          check_result "Linux ARM64" "${{ needs.linux-arm64.result }}"
+          check_result "macOS x64" "${{ needs.macos-x64.result }}"
+          check_result "macOS ARM64" "${{ needs.macos-arm64.result }}"
+          check_result "Windows x64" "${{ needs.windows-x64.result }}"
+          check_result "Windows ARM64" "${{ needs.windows-arm64.result }}"
+          
+          # Check if at least one build succeeded
+          if [ -z "$PASSED" ]; then
+            echo "has_success=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_success=true" >> $GITHUB_OUTPUT
+          fi
+          
+          echo -e "passed<<EOF\n${PASSED}EOF" >> $GITHUB_OUTPUT
+          echo -e "failed<<EOF\n${FAILED}EOF" >> $GITHUB_OUTPUT
+
+      - name: Download available artifacts
+        if: steps.results.outputs.has_success == 'true'
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-
-      - name: Create Gist with configure help files
-        id: create-gist
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Prepare gist content
-          mkdir -p gist-content
-          
-          # Copy all configure help files
-          for platform in linux-x64 linux-arm64 macos-x64 macos-arm64 windows-x64 windows-arm64; do
-            if [ -f "artifacts/configure-help-${platform}/configure-help-${platform}.txt" ]; then
-              cp "artifacts/configure-help-${platform}/configure-help-${platform}.txt" "gist-content/"
-            fi
-          done
-          
-          # Create gist description
-          GIST_DESC="FFmpeg ${{ inputs.ffmpeg_version }} configure --help outputs for all platforms ($(date -u +%Y-%m-%d))"
-          
-          # Create gist using gh CLI
-          cd gist-content
-          GIST_URL=$(gh gist create \
-            --public \
-            --desc "$GIST_DESC" \
-            configure-help-*.txt 2>&1 | tail -1)
-          
-          echo "gist_url=$GIST_URL" >> $GITHUB_OUTPUT
-          echo "Created Gist: $GIST_URL"
+        continue-on-error: true
 
       - name: Create branch and update binaries
+        if: steps.results.outputs.has_success == 'true'
         run: |
           BRANCH_NAME="update-ffmpeg-${{ inputs.ffmpeg_version }}-$(date +%Y%m%d-%H%M%S)"
           LIBS_DIR="src/main/resources/libs"
           
-          # Configure git
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Create new branch
           git checkout -b "$BRANCH_NAME"
           
-          # Create libs directory if it doesn't exist
           mkdir -p "$LIBS_DIR"
           
-          # Remove old zip files
           rm -f "$LIBS_DIR"/*.zip
           echo "Removed old binaries"
           
-          # Copy new zip files (only the binary zips, not configure-help)
           for platform in linux-x64 linux-arm64 macos-x64 macos-arm64 windows-x64 windows-arm64; do
             if [ -f "artifacts/ffmpeg-${platform}/ffmpeg-${platform}.zip" ]; then
               cp "artifacts/ffmpeg-${platform}/ffmpeg-${platform}.zip" "$LIBS_DIR/"
+              echo "Copied ffmpeg-${platform}.zip"
             fi
           done
           
-          echo "Copied new binaries:"
-          ls -la "$LIBS_DIR"/*.zip || echo "No zip files found"
+          echo "Copied binaries:"
+          ls -la "$LIBS_DIR"/*.zip 2>/dev/null || echo "No zip files found"
           
-          # Commit changes
           git add "$LIBS_DIR"
           git commit -m "Update FFmpeg binaries to ${{ inputs.ffmpeg_version }}"
           
-          # Push branch
           git push origin "$BRANCH_NAME"
           
-          # Save branch name for PR step
           echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
 
       - name: Create Pull Request
+        if: steps.results.outputs.has_success == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -134,21 +137,13 @@ jobs:
 
           This PR updates the FFmpeg binaries to version **${{ inputs.ffmpeg_version }}**.
 
-          ### Included platforms:
-          - ✅ Linux x64
-          - ✅ Linux ARM64
-          - ✅ macOS x64
-          - ✅ macOS ARM64
-          - ✅ Windows x64
-          - ✅ Windows ARM64
-
+          ### Successful builds:
+          ${{ steps.results.outputs.passed }}
+          ### Failed builds:
+          ${{ steps.results.outputs.failed }}
           ### Changes:
           - Removed old binary zip files from \`src/main/resources/libs\`
-          - Added new FFmpeg ${{ inputs.ffmpeg_version }} binaries
-
-          ### Configure Help Reference
-          Full \`./configure --help\` output for all platforms is available in this Gist:
-          ${{ steps.create-gist.outputs.gist_url }}
+          - Added new FFmpeg ${{ inputs.ffmpeg_version }} binaries for successful platforms
 
           ---
           *This PR was automatically generated by the FFmpeg Build Orchestrator workflow.*"
@@ -158,3 +153,11 @@ jobs:
             --head "$BRANCH_NAME" \
             --title "Update FFmpeg binaries to ${{ inputs.ffmpeg_version }}" \
             --body "$PR_BODY"
+
+      - name: Report all builds failed
+        if: steps.results.outputs.has_success == 'false'
+        run: |
+          echo "::error::All platform builds failed. No PR will be created."
+          echo "Failed builds:"
+          echo "${{ steps.results.outputs.failed }}"
+          exit 1
