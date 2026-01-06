@@ -138,42 +138,43 @@ jobs:
           "${WORKSPACE}/ffmpeg-build/bin/ffprobe.exe" -version
 
       - name: Package binaries
-        shell: msys2 {0}
-        run: |
-          WORKSPACE=$(cygpath -u "${{ github.workspace }}")
-          cd "${WORKSPACE}/ffmpeg-build"
-          
-          mkdir -p package
-          cp bin/*.dll package/ 2>/dev/null || true
-          cp bin/*.exe package/ 2>/dev/null || true
-          
-          # Collect MSYS2 dependencies iteratively
-          for i in 1 2 3 4 5; do
-            found=0
-            for dll in package/*.dll; do
-              [ -f "$dll" ] || continue
-              deps=$(ldd "$dll" 2>/dev/null | { grep -i clangarm64 || true; } | awk '{print $3}')
-              for dep in $deps; do
-                [ -z "$dep" ] && continue
-                [ ! -f "$dep" ] && continue
-                base=$(basename "$dep")
-                if [ ! -f "package/$base" ]; then
-                  cp "$dep" package/ && found=1
-                fi
-              done
-            done
-            [ "$found" -eq 0 ] && break
-          done
-          
-          echo "${{ env.FFMPEG_VERSION }}" > package/version.cfg
-          echo "Package contents:"
-          ls -la package/
-
-      - name: Create zip
         shell: pwsh
         run: |
-          Compress-Archive -Path "${{ github.workspace }}\ffmpeg-build\package\*" -DestinationPath "${{ github.workspace }}\ffmpeg-build\ffmpeg-windows-arm64.zip"
-          Get-ChildItem "${{ github.workspace }}\ffmpeg-build\ffmpeg-windows-arm64.zip"
+          $buildDir = "${{ github.workspace }}\ffmpeg-build"
+          $packageDir = "$buildDir\package"
+          
+          New-Item -ItemType Directory -Force -Path $packageDir
+          
+          # Copy FFmpeg binaries
+          Copy-Item "$buildDir\bin\*.dll" -Destination $packageDir -ErrorAction SilentlyContinue
+          Copy-Item "$buildDir\bin\*.exe" -Destination $packageDir -ErrorAction SilentlyContinue
+          
+          # Copy MSYS2 runtime DLLs from CLANGARM64
+          $msysDir = "C:\msys64\clangarm64\bin"
+          if (Test-Path $msysDir) {
+            $runtimeDlls = @(
+              "libc++.dll",
+              "libunwind.dll", 
+              "libwinpthread-1.dll"
+            )
+            foreach ($dll in $runtimeDlls) {
+              $src = Join-Path $msysDir $dll
+              if (Test-Path $src) {
+                Copy-Item $src -Destination $packageDir
+              }
+            }
+          }
+          
+          # Version file
+          Set-Content -Path "$packageDir\version.cfg" -Value "${{ env.FFMPEG_VERSION }}"
+          
+          # List contents
+          Write-Host "Package contents:"
+          Get-ChildItem $packageDir
+          
+          # Create zip
+          Compress-Archive -Path "$packageDir\*" -DestinationPath "$buildDir\ffmpeg-windows-arm64.zip"
+          Get-ChildItem "$buildDir\ffmpeg-windows-arm64.zip"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
