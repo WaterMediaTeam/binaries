@@ -21,20 +21,17 @@ jobs:
 
       - name: Install dependencies
         run: |
-          brew update || true
-          
-          # Core codecs and libraries
-          brew install nasm yasm pkg-config cmake meson ninja wget zip \
-            x264 x265 libvpx theora xvid aom dav1d rav1e svt-av1 \
-            fdk-aac lame opus libvorbis speex \
-            libass freetype fontconfig fribidi harfbuzz \
-            libbluray webp openjpeg snappy libxml2 \
-            gnutls srt libssh \
-            libsoxr libvidstab zimg zeromq rubberband \
-            sdl2 libbs2b libcaca game-music-emu || true
-          
-          echo "Installed packages:"
-          brew list
+          brew update
+          brew install \
+            nasm yasm pkg-config cmake meson ninja \
+            x264 x265 libvpx lame opus libvorbis theora \
+            libass freetype fontconfig fribidi harfbuzz gnutls \
+            sdl2 aom dav1d webp libsoxr libvidstab zimg zeromq \
+            speex two-lame libbluray libgme rubberband \
+            srt libssh libxml2 snappy openjpeg libbs2b libcaca \
+            rav1e svt-av1 jpeg-xl librsvg xvid opencore-amr \
+            shine kvazaar openh264 librist lv2 lilv \
+            gcrypt gmp openssl
 
       - name: Download FFmpeg source
         run: |
@@ -42,44 +39,40 @@ jobs:
           tar -xf ffmpeg.tar.xz
           mv ffmpeg-${{ env.FFMPEG_VERSION }} ffmpeg-src
 
+      - name: Save configure help
+        working-directory: ffmpeg-src
+        run: |
+          ./configure --help > "${{ github.workspace }}/configure-help-macos-arm64.txt"
+
       - name: Configure FFmpeg
         working-directory: ffmpeg-src
         run: |
-          BREW_PREFIX="$(brew --prefix)"
-          
-          # Build PKG_CONFIG_PATH for all installed packages
+          # Collect keg-only package paths
           PKG_PATHS=""
           EXTRA_CFLAGS=""
           EXTRA_LDFLAGS=""
           
-          for pkg in x264 x265 libvpx aom dav1d rav1e svt-av1 \
-                     fdk-aac lame opus libvorbis speex \
-                     libass freetype fontconfig fribidi harfbuzz \
-                     libbluray webp openjpeg snappy libxml2 \
-                     gnutls srt libssh \
-                     libsoxr libvidstab zimg zeromq rubberband \
-                     sdl2 libbs2b libcaca game-music-emu theora xvid; do
+          for pkg in x264 x265 lame opus libvorbis theora libass freetype fontconfig \
+                     fribidi harfbuzz gnutls sdl2 aom dav1d webp libsoxr speex \
+                     libbluray libgme rubberband srt libssh libxml2 snappy openjpeg \
+                     libbs2b rav1e svt-av1 jpeg-xl librsvg xvid opencore-amr \
+                     shine kvazaar openh264 librist lv2 lilv gcrypt gmp openssl; do
             if brew --prefix "$pkg" &>/dev/null; then
               PKG_PREFIX="$(brew --prefix "$pkg")"
               if [ -d "$PKG_PREFIX/lib/pkgconfig" ]; then
                 PKG_PATHS="$PKG_PREFIX/lib/pkgconfig:$PKG_PATHS"
               fi
-              if [ -d "$PKG_PREFIX/include" ]; then
-                EXTRA_CFLAGS="$EXTRA_CFLAGS -I$PKG_PREFIX/include"
-              fi
-              if [ -d "$PKG_PREFIX/lib" ]; then
-                EXTRA_LDFLAGS="$EXTRA_LDFLAGS -L$PKG_PREFIX/lib"
-              fi
+              EXTRA_CFLAGS="$EXTRA_CFLAGS -I$PKG_PREFIX/include"
+              EXTRA_LDFLAGS="$EXTRA_LDFLAGS -L$PKG_PREFIX/lib"
             fi
           done
           
-          export PKG_CONFIG_PATH="$PKG_PATHS$BREW_PREFIX/lib/pkgconfig:$BREW_PREFIX/share/pkgconfig"
+          export PKG_CONFIG_PATH="$PKG_PATHS$PKG_CONFIG_PATH"
           
           ./configure \
             --prefix="${{ github.workspace }}/ffmpeg-build" \
             --enable-gpl \
             --enable-version3 \
-            --enable-nonfree \
             --enable-shared \
             --disable-static \
             --enable-pic \
@@ -90,45 +83,56 @@ jobs:
             --disable-podpages \
             --disable-txtpages \
             --disable-debug \
-            --enable-videotoolbox \
-            --enable-audiotoolbox \
             --enable-libaom \
             --enable-libass \
+            --enable-libbluray \
+            --enable-libbs2b \
+            --enable-libcaca \
             --enable-libdav1d \
-            --enable-libfdk-aac \
             --enable-libfontconfig \
             --enable-libfreetype \
             --enable-libfribidi \
             --enable-libharfbuzz \
+            --enable-libgme \
+            --enable-libkvazaar \
             --enable-libmp3lame \
+            --enable-libopencore-amrnb \
+            --enable-libopencore-amrwb \
+            --enable-libopenh264 \
+            --enable-libopenjpeg \
             --enable-libopus \
-            --enable-libvorbis \
-            --enable-libvpx \
-            --enable-libx264 \
-            --enable-libx265 \
-            --enable-libtheora \
-            --enable-libwebp \
-            --enable-libxml2 \
-            --enable-gnutls \
             --enable-librav1e \
-            --enable-libsvtav1 \
+            --enable-librist \
+            --enable-librsvg \
+            --enable-librubberband \
+            --enable-libshine \
+            --enable-libsnappy \
+            --enable-libsoxr \
+            --enable-libspeex \
             --enable-libsrt \
             --enable-libssh \
-            --enable-libsoxr \
+            --enable-libsvtav1 \
+            --enable-libtheora \
             --enable-libvidstab \
+            --enable-libvorbis \
+            --enable-libvpx \
+            --enable-libwebp \
+            --enable-libx264 \
+            --enable-libx265 \
+            --enable-libxvid \
+            --enable-libxml2 \
             --enable-libzimg \
             --enable-libzmq \
-            --enable-librubberband \
-            --enable-libspeex \
-            --enable-libbluray \
-            --enable-libbs2b \
-            --enable-libcaca \
-            --enable-libgme \
-            --enable-libsnappy \
-            --enable-libopenjpeg \
-            --enable-libxvid \
-            --extra-cflags="-I$BREW_PREFIX/include $EXTRA_CFLAGS" \
-            --extra-ldflags="-L$BREW_PREFIX/lib $EXTRA_LDFLAGS"
+            --enable-libjxl \
+            --enable-lv2 \
+            --enable-gnutls \
+            --enable-openssl \
+            --enable-gcrypt \
+            --enable-gmp \
+            --enable-videotoolbox \
+            --enable-audiotoolbox \
+            --extra-cflags="$EXTRA_CFLAGS" \
+            --extra-ldflags="$EXTRA_LDFLAGS"
 
       - name: Build FFmpeg
         working-directory: ffmpeg-src
@@ -155,4 +159,11 @@ jobs:
         with:
           name: ffmpeg-macos-arm64
           path: ${{ github.workspace }}/ffmpeg-build/ffmpeg-macos-arm64.zip
+          retention-days: 7
+
+      - name: Upload configure help
+        uses: actions/upload-artifact@v4
+        with:
+          name: configure-help-macos-arm64
+          path: ${{ github.workspace }}/configure-help-macos-arm64.txt
           retention-days: 7

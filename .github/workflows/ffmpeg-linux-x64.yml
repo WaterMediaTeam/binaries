@@ -30,7 +30,7 @@ jobs:
           sudo apt-get install -y \
             build-essential nasm yasm pkg-config git cmake meson ninja-build \
             texinfo wget curl zip python3 \
-            libx264-dev libx265-dev libvpx-dev libfdk-aac-dev libmp3lame-dev \
+            libx264-dev libx265-dev libvpx-dev libmp3lame-dev \
             libopus-dev libvorbis-dev libtheora-dev libass-dev libfreetype-dev \
             libfontconfig1-dev libfribidi-dev libharfbuzz-dev libgnutls28-dev \
             libsdl2-dev libaom-dev libdav1d-dev libwebp-dev libsoxr-dev \
@@ -41,7 +41,16 @@ jobs:
             libjack-dev libmodplug-dev libmysofa-dev librsvg2-dev libtesseract-dev \
             libdrm-dev libva-dev libvdpau-dev libxcb1-dev libxcb-shm0-dev \
             libxcb-xfixes0-dev libxvidcore-dev libchromaprint-dev frei0r-plugins-dev \
-            ladspa-sdk libopencore-amrnb-dev libopencore-amrwb-dev libjxl-dev
+            ladspa-sdk libopencore-amrnb-dev libopencore-amrwb-dev libjxl-dev \
+            libshine-dev libcodec2-dev libilbc-dev libkvazaar-dev libopenh264-dev \
+            libvo-amrwbenc-dev librist-dev liblensfun-dev liblilv-dev lv2-dev \
+            libgcrypt20-dev libgmp-dev libssl-dev
+
+      - name: Install nv-codec-headers
+        run: |
+          git clone --depth 1 https://github.com/FFmpeg/nv-codec-headers.git
+          cd nv-codec-headers
+          sudo make install
 
       - name: Cache compiled dependencies
         uses: actions/cache@v4
@@ -51,7 +60,7 @@ jobs:
             /usr/local/lib
             /usr/local/include
             /usr/local/lib/pkgconfig
-          key: linux-x64-deps-v2-${{ hashFiles('.github/workflows/ffmpeg-linux-x64.yml') }}
+          key: linux-x64-deps-v3-${{ hashFiles('.github/workflows/ffmpeg-linux-x64.yml') }}
 
       - name: Build libvmaf from source
         if: steps.cache-deps.outputs.cache-hit != 'true'
@@ -109,6 +118,11 @@ jobs:
           tar -xf ffmpeg.tar.xz
           mv ffmpeg-${{ env.FFMPEG_VERSION }} ffmpeg-src
 
+      - name: Save configure help
+        working-directory: ffmpeg-src
+        run: |
+          ./configure --help > "${{ github.workspace }}/configure-help-linux-x64.txt"
+
       - name: Configure FFmpeg
         working-directory: ffmpeg-src
         run: |
@@ -119,7 +133,6 @@ jobs:
             --prefix="${{ github.workspace }}/ffmpeg-build" \
             --enable-gpl \
             --enable-version3 \
-            --enable-nonfree \
             --enable-shared \
             --disable-static \
             --enable-pic \
@@ -138,26 +151,32 @@ jobs:
             --enable-libbluray \
             --enable-libbs2b \
             --enable-libcaca \
+            --enable-libcodec2 \
             --enable-libdav1d \
-            --enable-libfdk-aac \
             --enable-libfontconfig \
             --enable-libfreetype \
             --enable-libfribidi \
             --enable-libharfbuzz \
             --enable-libgme \
             --enable-libgsm \
+            --enable-libilbc \
             --enable-libjack \
+            --enable-libkvazaar \
+            --enable-liblensfun \
             --enable-libmodplug \
             --enable-libmp3lame \
             --enable-libmysofa \
             --enable-libopencore-amrnb \
             --enable-libopencore-amrwb \
+            --enable-libopenh264 \
             --enable-libopenjpeg \
             --enable-libopenmpt \
             --enable-libopus \
             --enable-librav1e \
+            --enable-librist \
             --enable-librsvg \
             --enable-librubberband \
+            --enable-libshine \
             --enable-libsnappy \
             --enable-libsoxr \
             --enable-libspeex \
@@ -169,6 +188,7 @@ jobs:
             --enable-libtwolame \
             --enable-libvidstab \
             --enable-libvmaf \
+            --enable-libvo-amrwbenc \
             --enable-libvorbis \
             --enable-libvpx \
             --enable-libwebp \
@@ -179,11 +199,22 @@ jobs:
             --enable-libzimg \
             --enable-libzmq \
             --enable-libjxl \
+            --enable-lv2 \
             --enable-gnutls \
+            --enable-openssl \
+            --enable-gcrypt \
+            --enable-gmp \
             --enable-opencl \
             --enable-vaapi \
             --enable-vdpau \
-            --enable-libdrm
+            --enable-libdrm \
+            --enable-ffnvcodec \
+            --enable-cuda \
+            --enable-cuda-llvm \
+            --enable-cuvid \
+            --enable-nvdec \
+            --enable-nvenc \
+            --enable-v4l2-m2m
 
       - name: Build FFmpeg
         working-directory: ffmpeg-src
@@ -213,4 +244,11 @@ jobs:
         with:
           name: ffmpeg-linux-x64
           path: ${{ github.workspace }}/ffmpeg-build/ffmpeg-linux-x64.zip
+          retention-days: 7
+
+      - name: Upload configure help
+        uses: actions/upload-artifact@v4
+        with:
+          name: configure-help-linux-x64
+          path: ${{ github.workspace }}/configure-help-linux-x64.txt
           retention-days: 7

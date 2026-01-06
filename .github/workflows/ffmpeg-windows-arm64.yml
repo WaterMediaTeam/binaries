@@ -29,7 +29,6 @@ jobs:
             mingw-w64-clang-aarch64-toolchain
             mingw-w64-clang-aarch64-clang
             mingw-w64-clang-aarch64-pkgconf
-            zip
             wget
             git
             mingw-w64-clang-aarch64-aom
@@ -41,7 +40,6 @@ jobs:
             mingw-w64-clang-aarch64-libvorbis
             mingw-w64-clang-aarch64-opus
             mingw-w64-clang-aarch64-lame
-            mingw-w64-clang-aarch64-fdk-aac
             mingw-w64-clang-aarch64-speex
             mingw-w64-clang-aarch64-libwebp
             mingw-w64-clang-aarch64-openjpeg2
@@ -63,6 +61,8 @@ jobs:
             mingw-w64-clang-aarch64-xz
             mingw-w64-clang-aarch64-bzip2
             mingw-w64-clang-aarch64-zlib
+            mingw-w64-clang-aarch64-openssl
+            mingw-w64-clang-aarch64-libgcrypt
 
       - name: Download FFmpeg source
         shell: msys2 {0}
@@ -70,6 +70,12 @@ jobs:
           curl -L "https://ffmpeg.org/releases/ffmpeg-${{ env.FFMPEG_VERSION }}.tar.xz" -o ffmpeg.tar.xz
           tar -xf ffmpeg.tar.xz
           mv ffmpeg-${{ env.FFMPEG_VERSION }} ffmpeg-src
+
+      - name: Save configure help
+        shell: msys2 {0}
+        run: |
+          cd ffmpeg-src
+          ./configure --help > ../configure-help-windows-arm64.txt
 
       - name: Configure FFmpeg
         shell: msys2 {0}
@@ -82,7 +88,6 @@ jobs:
             --prefix="${{ github.workspace }}/ffmpeg-build" \
             --enable-gpl \
             --enable-version3 \
-            --enable-nonfree \
             --enable-shared \
             --disable-static \
             --enable-pic \
@@ -98,7 +103,6 @@ jobs:
             --enable-libass \
             --enable-libbluray \
             --enable-libdav1d \
-            --enable-libfdk-aac \
             --enable-libfontconfig \
             --enable-libfreetype \
             --enable-libfribidi \
@@ -120,6 +124,9 @@ jobs:
             --enable-libxml2 \
             --enable-libzimg \
             --enable-gnutls \
+            --enable-openssl \
+            --enable-gcrypt \
+            --enable-gmp \
             --enable-d3d11va \
             --enable-dxva2
 
@@ -133,9 +140,9 @@ jobs:
       - name: Test binaries
         shell: msys2 {0}
         run: |
-          WORKSPACE=$(cygpath -u "${{ github.workspace }}")
-          "${WORKSPACE}/ffmpeg-build/bin/ffmpeg.exe" -version
-          "${WORKSPACE}/ffmpeg-build/bin/ffprobe.exe" -version
+          export PATH="${{ github.workspace }}/ffmpeg-build/bin:$PATH"
+          ffmpeg -version
+          ffprobe -version
 
       - name: Package binaries
         shell: pwsh
@@ -181,4 +188,11 @@ jobs:
         with:
           name: ffmpeg-windows-arm64
           path: ${{ github.workspace }}/ffmpeg-build/ffmpeg-windows-arm64.zip
+          retention-days: 7
+
+      - name: Upload configure help
+        uses: actions/upload-artifact@v4
+        with:
+          name: configure-help-windows-arm64
+          path: ${{ github.workspace }}/configure-help-windows-arm64.txt
           retention-days: 7
