@@ -27,7 +27,7 @@ jobs:
           install: >-
             base-devel
             mingw-w64-clang-aarch64-toolchain
-            mingw-w64-clang-aarch64-nasm
+            mingw-w64-clang-aarch64-clang
             mingw-w64-clang-aarch64-pkgconf
             zip
             wget
@@ -75,6 +75,11 @@ jobs:
         shell: msys2 {0}
         run: |
           cd ffmpeg-src
+          
+          # Use clang explicitly
+          export CC=clang
+          export CXX=clang++
+          
           ./configure \
             --prefix="${{ github.workspace }}/ffmpeg-build" \
             --enable-gpl \
