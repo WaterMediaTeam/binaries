@@ -123,7 +123,6 @@ jobs:
             --enable-libx265 \
             --enable-libxml2 \
             --enable-libzimg \
-            --enable-gnutls \
             --enable-openssl \
             --enable-gcrypt \
             --enable-gmp \

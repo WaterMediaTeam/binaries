@@ -22,6 +22,7 @@ jobs:
       - name: Install dependencies
         run: |
           brew update
+          brew upgrade
           brew install \
             nasm yasm pkg-config cmake meson ninja \
             x264 x265 libvpx lame opus libvorbis theora \
@@ -30,7 +31,7 @@ jobs:
             speex two-lame libbluray libgme rubberband \
             srt libssh libxml2 snappy openjpeg libbs2b libcaca \
             rav1e svt-av1 jpeg-xl librsvg xvid opencore-amr \
-            shine kvazaar openh264 librist lv2 lilv \
+            kvazaar openh264 librist lv2 lilv \
             gcrypt gmp openssl
 
       - name: Download FFmpeg source
@@ -56,7 +57,7 @@ jobs:
                      fribidi harfbuzz gnutls sdl2 aom dav1d webp libsoxr speex \
                      libbluray libgme rubberband srt libssh libxml2 snappy openjpeg \
                      libbs2b rav1e svt-av1 jpeg-xl librsvg xvid opencore-amr \
-                     shine kvazaar openh264 librist lv2 lilv gcrypt gmp openssl; do
+                     kvazaar openh264 librist lv2 lilv gcrypt gmp openssl; do
             if brew --prefix "$pkg" &>/dev/null; then
               PKG_PREFIX="$(brew --prefix "$pkg")"
               if [ -d "$PKG_PREFIX/lib/pkgconfig" ]; then
@@ -105,7 +106,6 @@ jobs:
             --enable-librist \
             --enable-librsvg \
             --enable-librubberband \
-            --enable-libshine \
             --enable-libsnappy \
             --enable-libsoxr \
             --enable-libspeex \
