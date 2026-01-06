@@ -12,7 +12,7 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     name: Build Linux x64
 
     steps:
@@ -44,7 +44,7 @@ jobs:
             libdrm-dev libva-dev libvdpau-dev libxcb1-dev libxcb-shm0-dev \
             libxcb-xfixes0-dev libxvidcore-dev libchromaprint-dev frei0r-plugins-dev \
             ladspa-sdk libopencore-amrnb-dev libopencore-amrwb-dev libjxl-dev \
-            libshine-dev libcodec2-dev libilbc-dev libkvazaar-dev libopenh264-dev \
+            libshine-dev libcodec2-dev libkvazaar-dev libopenh264-dev \
             libvo-amrwbenc-dev librist-dev liblensfun-dev liblilv-dev lv2-dev \
             libgmp-dev libssl-dev
 
@@ -161,7 +161,6 @@ jobs:
             --enable-libharfbuzz \
             --enable-libgme \
             --enable-libgsm \
-            --enable-libilbc \
             --enable-libjack \
             --enable-libkvazaar \
             --enable-liblensfun \
