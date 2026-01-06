@@ -196,7 +196,6 @@ jobs:
             --enable-libzmq \
             --enable-libjxl \
             --enable-lv2 \
-            --enable-gnutls \
             --enable-openssl \
             --enable-gcrypt \
             --enable-gmp \
