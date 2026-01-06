@@ -36,7 +36,7 @@ jobs:
             libopus-dev libvorbis-dev libtheora-dev libass-dev libfreetype-dev \
             libfontconfig1-dev libfribidi-dev libharfbuzz-dev libgnutls28-dev \
             libsdl2-dev libaom-dev libdav1d-dev libwebp-dev libsoxr-dev \
-            libvidstab-dev libzimg-dev libzmq3-dev libspeex-dev libtwolame-dev \
+            libzimg-dev libzmq3-dev libspeex-dev libtwolame-dev \
             libgsm1-dev libbluray-dev libgme-dev libopenmpt-dev librubberband-dev \
             libsrt-gnutls-dev libssh-dev libxml2-dev liblzma-dev libsnappy-dev \
             libopenjp2-7-dev ocl-icd-opencl-dev libbs2b-dev libcaca-dev \
@@ -46,7 +46,7 @@ jobs:
             ladspa-sdk libopencore-amrnb-dev libopencore-amrwb-dev libjxl-dev \
             libshine-dev libcodec2-dev libilbc-dev libkvazaar-dev libopenh264-dev \
             libvo-amrwbenc-dev librist-dev liblensfun-dev liblilv-dev lv2-dev \
-            libgcrypt20-dev libgmp-dev libssl-dev
+            libgmp-dev libssl-dev
 
       - name: Install nv-codec-headers
         run: |
@@ -188,7 +188,6 @@ jobs:
             --enable-libtesseract \
             --enable-libtheora \
             --enable-libtwolame \
-            --enable-libvidstab \
             --enable-libvmaf \
             --enable-libvo-amrwbenc \
             --enable-libvorbis \
@@ -203,7 +202,6 @@ jobs:
             --enable-libjxl \
             --enable-lv2 \
             --enable-openssl \
-            --enable-gcrypt \
             --enable-gmp \
             --enable-opencl \
             --enable-vaapi \

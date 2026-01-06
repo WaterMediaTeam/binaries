@@ -62,7 +62,6 @@ jobs:
             mingw-w64-clang-aarch64-bzip2
             mingw-w64-clang-aarch64-zlib
             mingw-w64-clang-aarch64-openssl
-            mingw-w64-clang-aarch64-libgcrypt
 
       - name: Download FFmpeg source
         shell: msys2 {0}
@@ -124,7 +123,6 @@ jobs:
             --enable-libxml2 \
             --enable-libzimg \
             --enable-openssl \
-            --enable-gcrypt \
             --enable-gmp \
             --enable-d3d11va \
             --enable-dxva2

@@ -69,7 +69,6 @@ jobs:
             mingw-w64-ucrt-x86_64-libmodplug
             mingw-w64-ucrt-x86_64-opencore-amr
             mingw-w64-ucrt-x86_64-librsvg
-            mingw-w64-x86_64-libvidstab
             mingw-w64-ucrt-x86_64-xvidcore
             mingw-w64-ucrt-x86_64-frei0r-plugins
             mingw-w64-ucrt-x86_64-rav1e
@@ -79,7 +78,6 @@ jobs:
             mingw-w64-ucrt-x86_64-openh264
             mingw-w64-ucrt-x86_64-librist
             mingw-w64-ucrt-x86_64-openssl
-            mingw-w64-ucrt-x86_64-libgcrypt
             mingw-w64-ucrt-x86_64-ffnvcodec-headers
 
       - name: Download FFmpeg source
@@ -155,7 +153,6 @@ jobs:
             --enable-libzimg \
             --enable-libjxl \
             --enable-openssl \
-            --enable-gcrypt \
             --enable-gmp \
             --enable-d3d11va \
             --enable-dxva2 \
