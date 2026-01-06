@@ -6,7 +6,7 @@ on:
       ffmpeg_version:
         description: 'FFmpeg version to build'
         required: true
-        default: '7.1'
+        default: '7.1.3'
         type: string
 
 jobs:
