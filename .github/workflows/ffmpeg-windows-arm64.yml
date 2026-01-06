@@ -76,11 +76,9 @@ jobs:
         run: |
           cd ffmpeg-src
           
-          # Use clang explicitly
-          export CC=clang
-          export CXX=clang++
-          
           ./configure \
+            --cc=clang \
+            --cxx=clang++ \
             --prefix="${{ github.workspace }}/ffmpeg-build" \
             --enable-gpl \
             --enable-version3 \
@@ -95,6 +93,7 @@ jobs:
             --disable-podpages \
             --disable-txtpages \
             --disable-debug \
+            --disable-x86asm \
             --enable-libaom \
             --enable-libass \
             --enable-libbluray \
