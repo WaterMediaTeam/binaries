@@ -166,8 +166,14 @@ jobs:
           done
           
           echo "${{ env.FFMPEG_VERSION }}" > package/version.cfg
-          cd package
-          zip -r ../ffmpeg-windows-arm64.zip .
+          echo "Package contents:"
+          ls -la package/
+
+      - name: Create zip
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "${{ github.workspace }}\ffmpeg-build\package\*" -DestinationPath "${{ github.workspace }}\ffmpeg-build\ffmpeg-windows-arm64.zip"
+          Get-ChildItem "${{ github.workspace }}\ffmpeg-build\ffmpeg-windows-arm64.zip"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
