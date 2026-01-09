@@ -1,3 +1,6 @@
+# 📦 RELEASE 3.0.0-rc.1
+- ✨ Marked as release-candidate (not much to update)
+
 # 📦 RELEASE 3.0.0-beta.2 (1)
 - ✨ Enhanced unzipping performance
 - ✨ Added FFMPEG for Windows ARM
