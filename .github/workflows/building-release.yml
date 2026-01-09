@@ -41,8 +41,12 @@ jobs:
           gradle --version
           java -version
 
-      - name: Release on CurseForge and Modrinth
-        run: gradle publishMods
+      - name: Release to CurseForge
+        run: gradle publishCurseforge
         env:
           CURSEFORGE_TOKEN: ${{ secrets.CURSEFORGE_TOKEN }}
+
+      - name: Release to Modrinth
+        run: gradle publishModrinth
+        env:
           MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}

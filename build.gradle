@@ -97,9 +97,9 @@ jar {
 publishMods {
     file = jar.archiveFile
     changelog = getChangelogText()
-    type = "alpha".equalsIgnoreCase(project.properties.versionType?.toString())
-            ? ALPHA : "beta".equalsIgnoreCase(project.properties.versionType?.toString())
-            ? BETA : "release".equalsIgnoreCase(project.properties.versionType?.toString())
+    type = "alpha".equalsIgnoreCase(project.properties.versiontype?.toString())
+            ? ALPHA : "beta".equalsIgnoreCase(project.properties.versiontype?.toString())
+            ? BETA : "release".equalsIgnoreCase(project.properties.versiontype?.toString())
             ? STABLE : ALPHA
     displayName = "WM-Binaries/${project.properties.version}"
     modLoaders.add("forge")
@@ -117,12 +117,14 @@ publishMods {
         clientRequired = true
         serverRequired = false
         projectSlug = id
+        requires("watermedia")
     }
 
     modrinth {
         accessToken = MT_TOKEN
         projectId = modrinthid
         minecraftVersions.addAll("1.18.2", "1.19.2", "1.20.1", "1.21.1", "1.21.11")
+        requires("watermedia")
     }
 }
 
