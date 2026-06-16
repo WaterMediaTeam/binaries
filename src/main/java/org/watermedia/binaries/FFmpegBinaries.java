@@ -14,7 +14,7 @@ class FFmpegBinaries {
     private static final String RESOURCE_PATH = "libs/ffmpeg-%s.zip";
 
     static boolean start(final Path baseDir) throws Exception {
-        final String platform = IOTool.getPlatformClassifier();
+        final String platform = IOTool.platformClassifier();
         final String resourcePath = String.format(RESOURCE_PATH, platform);
 
         // CHECK VERSION
