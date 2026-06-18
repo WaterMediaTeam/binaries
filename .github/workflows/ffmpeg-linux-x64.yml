@@ -258,7 +258,14 @@ jobs:
         run: |
           cd "${{ github.workspace }}/ffmpeg-build"
           mkdir -p package
-          cp lib/*.so* package/ 2>/dev/null || true
+          # ONE FILE PER FFMPEG LIB, NAMED BY ITS SONAME. lib/ HAS THREE NAMES PER LIB
+          # (.so, .so.MAJOR, .so.MAJOR.MINOR.PATCH); cp -L OF THE GLOB WOULD TRIPLICATE
+          # EACH REAL FILE (libavcodec ALONE IS ~30MB). KEEP ONLY THE SONAME (.so.MAJOR).
+          for so in lib/*.so.*; do
+            [ -e "$so" ] || continue
+            case "$so" in *.so.*.*) continue ;; esac
+            cp -L "$so" "package/$(basename "$so")"
+          done
           # JAVACPP JNI GLUE (libjni*.so) — REUSED FROM BYTEDECO, BOUND TO OUR LIBS BY SONAME.
           curl -L -o "${{ github.workspace }}/javacpp-ffmpeg.jar" \
             "https://repo1.maven.org/maven2/org/bytedeco/ffmpeg/${{ env.BYTEDECO_VERSION }}/ffmpeg-${{ env.BYTEDECO_VERSION }}-linux-x86_64.jar"
@@ -286,7 +293,7 @@ jobs:
           for f in package/*.so*; do patchelf --set-rpath '$ORIGIN' "$f" 2>/dev/null || true; done
           echo "${{ env.FFMPEG_VERSION }}" > package/version.cfg
           cd package
-          zip -r ../ffmpeg-linux-x64.zip .
+          zip -9 -r ../ffmpeg-linux-x64.zip .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
