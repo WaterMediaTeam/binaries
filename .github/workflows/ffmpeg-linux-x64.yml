@@ -6,6 +6,14 @@ on:
       ffmpeg_version:
         required: true
         type: string
+  # STANDALONE TRIGGER FOR ITERATING THIS PLATFORM WITHOUT THE FULL ORCHESTRATOR.
+  workflow_dispatch:
+    inputs:
+      ffmpeg_version:
+        description: 'FFmpeg version to build'
+        required: true
+        default: '8.0.1'
+        type: string
 
 env:
   FFMPEG_VERSION: ${{ inputs.ffmpeg_version }}
@@ -36,7 +44,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             build-essential nasm yasm pkg-config git cmake meson ninja-build \
-            texinfo wget curl zip unzip python3 \
+            texinfo wget curl zip unzip patchelf python3 \
             libx264-dev libx265-dev libvpx-dev libmp3lame-dev \
             libopus-dev libvorbis-dev libtheora-dev libass-dev libfreetype-dev \
             libfontconfig1-dev libfribidi-dev libharfbuzz-dev libgnutls28-dev \
@@ -55,7 +63,9 @@ jobs:
 
       - name: Install nv-codec-headers
         run: |
-          git clone --depth 1 https://github.com/FFmpeg/nv-codec-headers.git
+          # PIN TO n12.2.72.0 — FFMPEG 8.0.1 (countingType) PREDATES THE 13.x RENAME
+          # TO countingTypeLSB; THIS IS ALSO FFMPEG 8.0's MINIMUM ffnvcodec VERSION.
+          git clone --depth 1 --branch n12.2.72.0 https://github.com/FFmpeg/nv-codec-headers.git
           cd nv-codec-headers
           sudo make install
 
@@ -253,6 +263,27 @@ jobs:
           curl -L -o "${{ github.workspace }}/javacpp-ffmpeg.jar" \
             "https://repo1.maven.org/maven2/org/bytedeco/ffmpeg/${{ env.BYTEDECO_VERSION }}/ffmpeg-${{ env.BYTEDECO_VERSION }}-linux-x86_64.jar"
           unzip -j -o "${{ github.workspace }}/javacpp-ffmpeg.jar" "org/bytedeco/ffmpeg/linux-x86_64/*jni*" -d package
+
+          # BUNDLE TRANSITIVE NON-SYSTEM DEPS SO THE ZIP IS SELF-CONTAINED. THE HOST
+          # PROVIDES glibc/gcc + GPU/DISPLAY/AUDIO LIBS (denylist); CODEC DEPS (FROM
+          # /usr/local AND /usr/lib) ARE COPIED IN, THEN RPATH=$ORIGIN LETS THE LIBS
+          # FIND THEIR SIBLINGS AT RUNTIME (JavaCPP ONLY PRELOADS av*).
+          deny='ld-linux|linux-vdso|libc\.so|libm\.so|libdl\.so|libpthread|librt\.so|libresolv|libnsl|libutil|libgcc_s|libstdc\+\+|libGL|libEGL|libGLX|libOpenGL|libX11|libxcb|libXext|libXfixes|libXau|libXdmcp|libdrm|libgbm|libwayland|libva|libvdpau|libasound|libpulse|libjack|libdbus|libsystemd|libudev'
+          for _ in $(seq 1 10); do
+            found=0
+            for f in package/*; do
+              [ -f "$f" ] || continue
+              while read -r soname arrow path _; do
+                [ "$arrow" = "=>" ] || continue
+                [ -f "$path" ] || continue
+                if echo "$soname" | grep -qE "$deny"; then continue; fi
+                base=$(basename "$path")
+                if [ ! -e "package/$base" ]; then cp -L "$path" "package/$base"; found=1; fi
+              done < <(ldd "$f" 2>/dev/null)
+            done
+            if [ "$found" = 0 ]; then break; fi
+          done
+          for f in package/*.so*; do patchelf --set-rpath '$ORIGIN' "$f" 2>/dev/null || true; done
           echo "${{ env.FFMPEG_VERSION }}" > package/version.cfg
           cd package
           zip -r ../ffmpeg-linux-x64.zip .

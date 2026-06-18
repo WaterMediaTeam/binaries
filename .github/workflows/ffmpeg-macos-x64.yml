@@ -6,6 +6,14 @@ on:
       ffmpeg_version:
         required: true
         type: string
+  # STANDALONE TRIGGER FOR ITERATING THIS PLATFORM WITHOUT THE FULL ORCHESTRATOR.
+  workflow_dispatch:
+    inputs:
+      ffmpeg_version:
+        description: 'FFmpeg version to build'
+        required: true
+        default: '8.0.1'
+        type: string
 
 env:
   FFMPEG_VERSION: ${{ inputs.ffmpeg_version }}
@@ -33,7 +41,7 @@ jobs:
         run: |
           brew update
           brew install \
-            nasm yasm pkg-config cmake meson ninja \
+            nasm yasm pkg-config cmake meson ninja dylibbundler \
             x264 x265 libvpx lame opus libvorbis theora libogg \
             libass freetype fontconfig fribidi harfbuzz gnutls \
             sdl2 aom dav1d webp libsoxr zimg zeromq \
@@ -50,7 +58,9 @@ jobs:
           # A ROLLING (TOO NEW) PACKAGE, SO WE BUILD THE PINNED VERSION FROM SOURCE.
           git clone --depth 1 --branch v3.1.2 https://gitlab.com/AOMediaCodec/SVT-AV1.git
           cd SVT-AV1/Build
-          cmake .. -G"Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DBUILD_SHARED_LIBS=ON
+          # ABSOLUTE INSTALL NAME SO "Test binaries" RESOLVES IT BEFORE BUNDLING
+          # (dylibbundler LATER REWRITES IT TO @loader_path FOR THE SHIPPED ZIP).
+          cmake .. -G"Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_INSTALL_NAME_DIR=/usr/local/lib -DBUILD_SHARED_LIBS=ON
           make -j$(sysctl -n hw.ncpu)
           sudo make install
 
@@ -172,6 +182,13 @@ jobs:
           curl -L -o "${{ github.workspace }}/javacpp-ffmpeg.jar" \
             "https://repo1.maven.org/maven2/org/bytedeco/ffmpeg/${{ env.BYTEDECO_VERSION }}/ffmpeg-${{ env.BYTEDECO_VERSION }}-macosx-x86_64.jar"
           unzip -j -o "${{ github.workspace }}/javacpp-ffmpeg.jar" "org/bytedeco/ffmpeg/macosx-x86_64/*jni*" -d package
+
+          # BUNDLE NON-SYSTEM DYLIB DEPS (svtav1 + brew codecs) AND REWRITE INSTALL NAMES
+          # TO @loader_path SO THE ZIP IS SELF-CONTAINED (dylibbundler SKIPS /usr/lib +
+          # /System). JavaCPP ONLY PRELOADS av*, SO TRANSITIVE DEPS MUST RESOLVE LOCALLY.
+          FIX=""
+          for f in package/*.dylib; do FIX="$FIX -x $f"; done
+          dylibbundler $FIX -b -d package/ -p @loader_path/ -of -od < /dev/null
           echo "${{ env.FFMPEG_VERSION }}" > package/version.cfg
           cd package
           zip -r ../ffmpeg-macos-x64.zip .
