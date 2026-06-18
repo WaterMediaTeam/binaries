@@ -24,7 +24,7 @@ env:
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: macos-13
     name: Build macOS x64
 
     steps:
