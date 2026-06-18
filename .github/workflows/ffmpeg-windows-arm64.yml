@@ -195,7 +195,8 @@ jobs:
             "-Dmaven.test.skip=true" `
             "-Dmaven.javadoc.skip=true" `
             "-Dmaven.source.skip=true" `
-            "-Dplatform.compiler=clang++"
+            "-Dplatform.compiler=clang++" `
+            "-Dplatform.linkpath.prefix2=-L"
 
           Write-Host "Built JNI glue:"
           Get-ChildItem -Recurse "target\classes\org\bytedeco\ffmpeg\windows-arm64\jni*.dll"
