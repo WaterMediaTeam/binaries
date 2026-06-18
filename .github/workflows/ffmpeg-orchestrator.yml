@@ -35,13 +35,11 @@ jobs:
     with:
       ffmpeg_version: ${{ inputs.ffmpeg_version }}
 
-  windows-arm64:
-    uses: ./.github/workflows/ffmpeg-windows-arm64.yml
-    with:
-      ffmpeg_version: ${{ inputs.ffmpeg_version }}
+  # windows-arm64 IS PARKED (NO JNI GLUE — SEE ffmpeg-windows-arm64.yml) AND IS
+  # INTENTIONALLY EXCLUDED FROM THE ORCHESTRATOR. RUN IT ON DEMAND IF NEEDED.
 
   create-pr:
-    needs: [linux-x64, linux-arm64, macos-x64, macos-arm64, windows-x64, windows-arm64]
+    needs: [linux-x64, linux-arm64, macos-x64, macos-arm64, windows-x64]
     runs-on: ubuntu-latest
     name: Create Pull Request
     permissions:
@@ -68,7 +66,7 @@ jobs:
           mkdir -p gist-content
           
           # Copy all configure help files
-          for platform in linux-x64 linux-arm64 macos-x64 macos-arm64 windows-x64 windows-arm64; do
+          for platform in linux-x64 linux-arm64 macos-x64 macos-arm64 windows-x64; do
             if [ -f "artifacts/configure-help-${platform}/configure-help-${platform}.txt" ]; then
               cp "artifacts/configure-help-${platform}/configure-help-${platform}.txt" "gist-content/"
             fi
@@ -107,7 +105,7 @@ jobs:
           echo "Removed old binaries"
           
           # Copy new zip files (only the binary zips, not configure-help)
-          for platform in linux-x64 linux-arm64 macos-x64 macos-arm64 windows-x64 windows-arm64; do
+          for platform in linux-x64 linux-arm64 macos-x64 macos-arm64 windows-x64; do
             if [ -f "artifacts/ffmpeg-${platform}/ffmpeg-${platform}.zip" ]; then
               cp "artifacts/ffmpeg-${platform}/ffmpeg-${platform}.zip" "$LIBS_DIR/"
             fi
@@ -140,7 +138,7 @@ jobs:
           - ✅ macOS x64
           - ✅ macOS ARM64
           - ✅ Windows x64
-          - ✅ Windows ARM64
+          - ⏸️ Windows ARM64 — parked (FFmpeg only, no JNI glue; needs ARM hardware)
 
           ### Changes:
           - Removed old binary zip files from \`src/main/resources/libs\`
