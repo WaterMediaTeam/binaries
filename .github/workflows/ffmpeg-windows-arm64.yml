@@ -6,9 +6,23 @@ on:
       ffmpeg_version:
         required: true
         type: string
+  # STANDALONE TRIGGER SO THE FROM-SOURCE GLUE BUILD CAN BE ITERATED WITHOUT
+  # RUNNING THE WHOLE ORCHESTRATOR (THIS IS THE ONLY PLATFORM WHOSE GLUE IS
+  # COMPILED INSTEAD OF DOWNLOADED).
+  workflow_dispatch:
+    inputs:
+      ffmpeg_version:
+        description: 'FFmpeg version to build'
+        required: true
+        default: '8.0.1'
+        type: string
 
 env:
   FFMPEG_VERSION: ${{ inputs.ffmpeg_version }}
+  # NO PREBUILT windows-arm64 FFMPEG NATIVES EXIST ON MAVEN CENTRAL, SO THE JNI GLUE
+  # IS COMPILED FROM javacpp-presets SOURCE AT THIS TAG. MUST MATCH THE javacpp PART OF
+  # org.bytedeco:ffmpeg IN THE MAIN PROJECT build.gradle (8.0.1-1.5.13 -> 1.5.13).
+  JAVACPP_PRESETS_VERSION: "1.5.13"
 
 jobs:
   build:
@@ -141,6 +155,42 @@ jobs:
           ffmpeg -version
           ffprobe -version
 
+      - name: Set up JDK for JavaCPP
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Build JavaCPP JNI glue
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          # NO PREBUILT windows-arm64 FFMPEG EXISTS ON MAVEN CENTRAL, SO WE COMPILE THE
+          # JNI GLUE OURSELVES AGAINST OUR FRESHLY BUILT FFMPEG. cppbuild.skip REUSES OUR
+          # LIBS INSTEAD OF REBUILDING FFMPEG; CLANGARM64 LINKS THE LLVM-MINGW IMPORT LIBS.
+          $env:PATH = "C:\msys64\clangarm64\bin;" + $env:PATH
+
+          git clone --depth 1 --branch "${{ env.JAVACPP_PRESETS_VERSION }}" https://github.com/bytedeco/javacpp-presets.git
+
+          # STAGE OUR FFMPEG WHERE cppbuild WOULD HAVE INSTALLED IT (cppbuild/<platform>/)
+          $stage = "javacpp-presets\ffmpeg\cppbuild\windows-arm64"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item "${{ github.workspace }}\ffmpeg-build\include" -Destination $stage -Recurse -Force
+          Copy-Item "${{ github.workspace }}\ffmpeg-build\lib"     -Destination $stage -Recurse -Force
+          Copy-Item "${{ github.workspace }}\ffmpeg-build\bin"     -Destination $stage -Recurse -Force
+
+          cd javacpp-presets
+          mvn -B -ntp install --projects .,ffmpeg `
+            -Djavacpp.platform=windows-arm64 `
+            -Djavacpp.cppbuild.skip `
+            -Dmaven.test.skip=true `
+            -Dmaven.javadoc.skip=true `
+            -Dmaven.source.skip=true `
+            -Dplatform.compiler=clang++
+
+          Write-Host "Built JNI glue:"
+          Get-ChildItem -Recurse "ffmpeg\target\classes\org\bytedeco\ffmpeg\windows-arm64\jni*.dll"
+
       - name: Package binaries
         shell: pwsh
         run: |
@@ -169,6 +219,9 @@ jobs:
             }
           }
           
+          # JavaCPP JNI glue compiled from source (no prebuilt windows-arm64 natives exist)
+          Copy-Item "${{ github.workspace }}\javacpp-presets\ffmpeg\target\classes\org\bytedeco\ffmpeg\windows-arm64\jni*.dll" -Destination $packageDir
+
           # Version file
           Set-Content -Path "$packageDir\version.cfg" -Value "${{ env.FFMPEG_VERSION }}"
           

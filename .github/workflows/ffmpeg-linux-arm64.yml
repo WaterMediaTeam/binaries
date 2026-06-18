@@ -9,6 +9,10 @@ on:
 
 env:
   FFMPEG_VERSION: ${{ inputs.ffmpeg_version }}
+  # BYTEDECO COORDINATE TO PULL THE JNI GLUE FROM. MUST MATCH org.bytedeco:ffmpeg
+  # IN THE MAIN PROJECT build.gradle SO THE GLUE MATCHES THE JAVA BINDINGS, AND ITS
+  # ffmpeg PART MUST SHARE THE SONAME MAJOR (avcodec-62/avutil-60/...) WITH OUR BUILD.
+  BYTEDECO_VERSION: 8.0.1-1.5.13
 
 jobs:
   build:
@@ -30,10 +34,9 @@ jobs:
           sudo apt-get install -y software-properties-common
           sudo add-apt-repository universe
           sudo apt-get update
-          sudo apt-get upgrade
           sudo apt-get install -y \
             build-essential nasm yasm pkg-config git cmake meson ninja-build \
-            texinfo wget curl zip python3 \
+            texinfo wget curl zip unzip python3 \
             libx264-dev libx265-dev libvpx-dev libmp3lame-dev \
             libopus-dev libvorbis-dev libtheora-dev libass-dev libfreetype-dev \
             libfontconfig1-dev libfribidi-dev libharfbuzz-dev libgnutls28-dev \
@@ -97,7 +100,9 @@ jobs:
       - name: Build SVT-AV1 from source
         if: steps.cache-deps.outputs.cache-hit != 'true'
         run: |
-          git clone --depth 1 https://gitlab.com/AOMediaCodec/SVT-AV1.git
+          # PIN TO v3.1.2 — LATER SVT-AV1 RELEASES DROPPED enable_adaptive_quantization,
+          # WHICH FFMPEG 8.0.1's libsvtav1.c STILL SETS (BUILD BREAKS OTHERWISE).
+          git clone --depth 1 --branch v3.1.2 https://gitlab.com/AOMediaCodec/SVT-AV1.git
           cd SVT-AV1/Build
           cmake .. -G"Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DBUILD_SHARED_LIBS=ON
           make -j$(nproc)
@@ -232,6 +237,10 @@ jobs:
           cd "${{ github.workspace }}/ffmpeg-build"
           mkdir -p package
           cp lib/*.so* package/ 2>/dev/null || true
+          # JAVACPP JNI GLUE (libjni*.so) — REUSED FROM BYTEDECO, BOUND TO OUR LIBS BY SONAME.
+          curl -L -o "${{ github.workspace }}/javacpp-ffmpeg.jar" \
+            "https://repo1.maven.org/maven2/org/bytedeco/ffmpeg/${{ env.BYTEDECO_VERSION }}/ffmpeg-${{ env.BYTEDECO_VERSION }}-linux-arm64.jar"
+          unzip -j -o "${{ github.workspace }}/javacpp-ffmpeg.jar" "org/bytedeco/ffmpeg/linux-arm64/*jni*" -d package
           echo "${{ env.FFMPEG_VERSION }}" > package/version.cfg
           cd package
           zip -r ../ffmpeg-linux-arm64.zip .

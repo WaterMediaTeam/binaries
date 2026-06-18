@@ -9,6 +9,10 @@ on:
 
 env:
   FFMPEG_VERSION: ${{ inputs.ffmpeg_version }}
+  # BYTEDECO COORDINATE TO PULL THE JNI GLUE FROM. MUST MATCH org.bytedeco:ffmpeg
+  # IN THE MAIN PROJECT build.gradle SO THE GLUE MATCHES THE JAVA BINDINGS, AND ITS
+  # ffmpeg PART MUST SHARE THE SONAME MAJOR (avcodec-62/avutil-60/...) WITH OUR BUILD.
+  BYTEDECO_VERSION: 8.0.1-1.5.13
 
 jobs:
   build:
@@ -20,9 +24,14 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install dependencies
+        env:
+          # DON'T LET brew install AUTO-UPGRADE UNRELATED PRE-INSTALLED RUNNER
+          # PACKAGES (e.g. xcodes, WHICH HAS NO BOTTLE AND FAILS THE STEP).
+          # ONLY THE BUILD DEPENDENCIES BELOW ARE NEEDED.
+          HOMEBREW_NO_AUTO_UPDATE: 1
+          HOMEBREW_NO_INSTALL_UPGRADE: 1
         run: |
           brew update
-          brew upgrade
           brew install \
             nasm yasm pkg-config cmake meson ninja \
             x264 x265 libvpx lame opus libvorbis theora libogg \
@@ -30,9 +39,20 @@ jobs:
             sdl2 aom dav1d webp libsoxr zimg zeromq \
             speex two-lame libbluray libgme rubberband \
             srt libssh libxml2 snappy openjpeg libbs2b libcaca \
-            rav1e svt-av1 jpeg-xl librsvg xvid opencore-amr \
+            rav1e jpeg-xl librsvg xvid opencore-amr \
             kvazaar openh264 librist lv2 lilv \
             gmp openssl
+
+      - name: Build SVT-AV1 v3.1.2
+        run: |
+          # FFMPEG 8.0.1 NEEDS SVT-AV1 <= 3.1.2 (LATER RELEASES DROPPED THE
+          # enable_adaptive_quantization FIELD THAT libsvtav1.c STILL SETS). brew SHIPS
+          # A ROLLING (TOO NEW) PACKAGE, SO WE BUILD THE PINNED VERSION FROM SOURCE.
+          git clone --depth 1 --branch v3.1.2 https://gitlab.com/AOMediaCodec/SVT-AV1.git
+          cd SVT-AV1/Build
+          cmake .. -G"Unix Makefiles" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local -DBUILD_SHARED_LIBS=ON
+          make -j$(sysctl -n hw.ncpu)
+          sudo make install
 
       - name: Download FFmpeg source
         run: |
@@ -68,7 +88,8 @@ jobs:
             fi
           done
           
-          export PKG_CONFIG_PATH="$PKG_PATHS$PKG_CONFIG_PATH"
+          # OUR PINNED SVT-AV1 v3.1.2 LIVES IN /usr/local (SEE "Build SVT-AV1" STEP)
+          export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:$PKG_PATHS$PKG_CONFIG_PATH"
           
           ./configure \
             --prefix="${{ github.workspace }}/ffmpeg-build" \
@@ -147,6 +168,10 @@ jobs:
           cd "${{ github.workspace }}/ffmpeg-build"
           mkdir -p package
           cp lib/*.dylib package/ 2>/dev/null || true
+          # JAVACPP JNI GLUE (libjni*.dylib) — REUSED FROM BYTEDECO, BOUND TO OUR LIBS BY SONAME.
+          curl -L -o "${{ github.workspace }}/javacpp-ffmpeg.jar" \
+            "https://repo1.maven.org/maven2/org/bytedeco/ffmpeg/${{ env.BYTEDECO_VERSION }}/ffmpeg-${{ env.BYTEDECO_VERSION }}-macosx-arm64.jar"
+          unzip -j -o "${{ github.workspace }}/javacpp-ffmpeg.jar" "org/bytedeco/ffmpeg/macosx-arm64/*jni*" -d package
           echo "${{ env.FFMPEG_VERSION }}" > package/version.cfg
           cd package
           zip -r ../ffmpeg-macos-arm64.zip .
