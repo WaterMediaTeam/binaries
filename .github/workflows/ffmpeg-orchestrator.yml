@@ -104,11 +104,12 @@ jobs:
           rm -f "$LIBS_DIR"/*.zip
           echo "Removed old binaries"
           
-          # Copy new zip files (only the binary zips, not configure-help)
+          # Copy new zip files, NAMED FOR IOTool.platformClassifier(): x64 carries NO
+          # arch suffix (ffmpeg-linux.zip) while arm64 keeps it (ffmpeg-linux-arm64.zip).
           for platform in linux-x64 linux-arm64 macos-x64 macos-arm64 windows-x64; do
-            if [ -f "artifacts/ffmpeg-${platform}/ffmpeg-${platform}.zip" ]; then
-              cp "artifacts/ffmpeg-${platform}/ffmpeg-${platform}.zip" "$LIBS_DIR/"
-            fi
+            src="artifacts/ffmpeg-${platform}/ffmpeg-${platform}.zip"
+            [ -f "$src" ] || continue
+            cp "$src" "$LIBS_DIR/ffmpeg-${platform%-x64}.zip"
           done
           
           echo "Copied new binaries:"
