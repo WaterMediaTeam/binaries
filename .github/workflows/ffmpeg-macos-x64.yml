@@ -41,7 +41,7 @@ jobs:
         run: |
           brew update
           brew install \
-            nasm yasm pkg-config cmake meson ninja dylibbundler \
+            nasm yasm pkg-config cmake meson ninja \
             x264 x265 libvpx lame opus libvorbis theora libogg \
             libass freetype fontconfig fribidi harfbuzz gnutls \
             sdl2 aom dav1d webp libsoxr zimg zeromq \
@@ -184,11 +184,41 @@ jobs:
           unzip -j -o "${{ github.workspace }}/javacpp-ffmpeg.jar" "org/bytedeco/ffmpeg/macosx-x86_64/*jni*" -d package
 
           # BUNDLE NON-SYSTEM DYLIB DEPS (svtav1 + brew codecs) AND REWRITE INSTALL NAMES
-          # TO @loader_path SO THE ZIP IS SELF-CONTAINED (dylibbundler SKIPS /usr/lib +
-          # /System). JavaCPP ONLY PRELOADS av*, SO TRANSITIVE DEPS MUST RESOLVE LOCALLY.
-          FIX=""
-          for f in package/*.dylib; do FIX="$FIX -x $f"; done
-          dylibbundler $FIX -b -d package/ -p @loader_path/ -of -od < /dev/null
+          # TO @loader_path SO THE ZIP IS SELF-CONTAINED (JavaCPP ONLY PRELOADS av*).
+          # COLLECT: COPY IN EVERY /usr/local + /opt/homebrew DEP (otool), TO CLOSURE.
+          # SYSTEM LIBS (/usr/lib, /System) STAY ON THE HOST.
+          for _ in $(seq 1 12); do
+            found=0
+            for f in package/*.dylib; do
+              [ -f "$f" ] || continue
+              while read -r dep _; do
+                case "$dep" in
+                  /usr/local/*|/opt/homebrew/*)
+                    base=$(basename "$dep")
+                    if [ ! -e "package/$base" ] && [ -f "$dep" ]; then
+                      cp "$dep" "package/$base"; chmod +w "package/$base"; found=1
+                    fi ;;
+                esac
+              done < <(otool -L "$f" | tail -n +2 | awk '{print $1}')
+            done
+            if [ "$found" = 0 ]; then break; fi
+          done
+          # REWRITE @rpath + ABSOLUTE REFS TO @loader_path, THEN AD-HOC RE-SIGN
+          # (arm64 REJECTS DYLIBS WITH AN INVALID SIGNATURE AFTER install_name_tool).
+          for f in package/*.dylib; do
+            [ -f "$f" ] || continue
+            install_name_tool -id "@loader_path/$(basename "$f")" "$f" 2>/dev/null || true
+            while read -r dep _; do
+              base=$(basename "$dep")
+              case "$dep" in
+                /usr/local/*|/opt/homebrew/*|@rpath/*)
+                  if [ -e "package/$base" ]; then
+                    install_name_tool -change "$dep" "@loader_path/$base" "$f" 2>/dev/null || true
+                  fi ;;
+              esac
+            done < <(otool -L "$f" | tail -n +2 | awk '{print $1}')
+            codesign --force --sign - "$f" 2>/dev/null || true
+          done
           echo "${{ env.FFMPEG_VERSION }}" > package/version.cfg
           cd package
           zip -r ../ffmpeg-macos-x64.zip .
