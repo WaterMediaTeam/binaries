@@ -169,6 +169,11 @@ jobs:
           # JNI GLUE OURSELVES AGAINST OUR FRESHLY BUILT FFMPEG. cppbuild.skip REUSES OUR
           # LIBS INSTEAD OF REBUILDING FFMPEG; CLANGARM64 LINKS THE LLVM-MINGW IMPORT LIBS.
           $env:PATH = "C:\msys64\clangarm64\bin;" + $env:PATH
+          # JavaCPP DEFAULTS TO `g++` ON WINDOWS, WHICH RESOLVES TO THE RUNNER'S x86_64
+          # MINGW — WRONG ARCH FOR OUR arm64 IMPORT LIBS (ld: "unhandled machine type
+          # 0xaa64"). ALIAS g++/gcc TO clangarm64's clang SO THE GLUE LINKS AS arm64.
+          Copy-Item C:\msys64\clangarm64\bin\clang++.exe C:\msys64\clangarm64\bin\g++.exe -Force
+          Copy-Item C:\msys64\clangarm64\bin\clang.exe   C:\msys64\clangarm64\bin\gcc.exe -Force
 
           git clone --depth 1 --branch "${{ env.JAVACPP_PRESETS_VERSION }}" https://github.com/bytedeco/javacpp-presets.git
 
