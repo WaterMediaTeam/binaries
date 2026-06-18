@@ -180,13 +180,15 @@ jobs:
           Copy-Item "${{ github.workspace }}\ffmpeg-build\bin"     -Destination $stage -Recurse -Force
 
           cd javacpp-presets
-          mvn -B -ntp install --projects .,ffmpeg `
-            -Djavacpp.platform=windows-arm64 `
-            -Djavacpp.cppbuild.skip `
-            -Dmaven.test.skip=true `
-            -Dmaven.javadoc.skip=true `
-            -Dmaven.source.skip=true `
-            -Dplatform.compiler=clang++
+          # QUOTE EACH ARG — POWERSHELL OTHERWISE MANGLES -Dkey=value TOKENS
+          # (MAVEN SAW ".platform=windows-arm64" AS A LIFECYCLE PHASE).
+          mvn -B -ntp install --projects ".,ffmpeg" `
+            "-Djavacpp.platform=windows-arm64" `
+            "-Djavacpp.cppbuild.skip" `
+            "-Dmaven.test.skip=true" `
+            "-Dmaven.javadoc.skip=true" `
+            "-Dmaven.source.skip=true" `
+            "-Dplatform.compiler=clang++"
 
           Write-Host "Built JNI glue:"
           Get-ChildItem -Recurse "ffmpeg\target\classes\org\bytedeco\ffmpeg\windows-arm64\jni*.dll"
