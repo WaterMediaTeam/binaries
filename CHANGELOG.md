@@ -1,3 +1,6 @@
+# 📦 RELEASE 3.0.0-rc.2
+- ✨ Updated FFMPEG binaries to 8.0.1
+
 # 📦 RELEASE 3.0.0-rc.1
 - ✨ Marked as release-candidate (not much to update)
 
