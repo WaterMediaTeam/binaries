@@ -1,3 +1,6 @@
+# 📦 RELEASE 3.0.0-rc.3
+- 🐛 Fixed CI building (missing builds on CF and MT)
+
 # 📦 RELEASE 3.0.0-rc.2
 - ✨ Updated FFMPEG binaries to 8.0.1
 
