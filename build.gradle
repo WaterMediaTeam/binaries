@@ -53,6 +53,8 @@ dependencies {
     // DEPENDENCIES NOT INCLUDED IN MINECRAFT
     library "org.apache.logging.log4j:log4j-api:$log4j_version"
     library "org.apache.logging.log4j:log4j-core:$log4j_version"
+    library "com.google.code.gson:gson:$gson_version"
+    include "org.tukaani:xz:$xz_version"
 }
 
 // Process target resources with mod info
@@ -80,13 +82,10 @@ jar {
     }
     from {
         configurations.include.collect {
-            it.isDirectory() ? it.matching {
-                exclude '*'
-            } : zipTree(it).matching {
-                exclude '*'
-            }
+            it.isDirectory() ? it : zipTree(it)
         }
     }
+    exclude('META-INF/versions/', 'META-INF/maven/')
     // Configurar estrategia para combinar archivos de servicios duplicados
     filesMatching('META-INF/services/*') {
         // Combinar contenido de archivos de servicio con el mismo nombre
