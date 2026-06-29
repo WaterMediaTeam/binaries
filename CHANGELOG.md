@@ -1,3 +1,9 @@
+# 📦 RELEASE 3.0.0-rc.4
+- ✨ Added YTDPL and BotGuard download manager (downloads latest available binary from github)
+- 🛠️ Updated shipped binaries from LGPL compiled binaries to GPL ones (adds x264 and x265)
+- 🐛 Fixed jar metadata license
+- 🐛 Fixed FORGE/NEOFORGE uses old modId (wm_binaries), moved to new one "watermedia_binaries"
+
 # 📦 RELEASE 3.0.0-rc.3
 - 🐛 Fixed CI building (missing builds on CF and MT)
 
