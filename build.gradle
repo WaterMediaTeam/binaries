@@ -2,7 +2,8 @@ import org.gradle.api.attributes.Usage
 
 plugins {
     id 'java'
-    id "me.modmuss50.mod-publish-plugin" version "1.1.+"
+    id 'com.gradleup.shadow'
+    id 'me.modmuss50.mod-publish-plugin'
 }
 
 def MT_TOKEN = System.getenv("MODRINTH_TOKEN")
@@ -10,7 +11,6 @@ def CF_TOKEN = System.getenv("CURSEFORGE_TOKEN")
 
 base {
     archivesName = id
-    libsDirectory = new File("builtJars/")
 }
 
 java {
@@ -59,11 +59,11 @@ dependencies {
     // (SEE ITS compileOnlyApi), SO BINARIES COMPILES AGAINST WATERMEDIA ALONE
     library "org.watermedia:watermedia"
 
-    // SHADED INTO THE BINARIES JAR (XZ DECOMPRESSES THE SHIPPED NATIVE ZIPS)
+    // SHADED (AND RELOCATED) INTO THE BINARIES JAR: XZ DECOMPRESSES THE SHIPPED NATIVE ZIPS
     include "org.tukaani:xz:$xz_version"
 }
 
-// Process target resources with mod info
+// PROCESS TARGET RESOURCES WITH MOD INFO
 processResources {
     outputs.upToDateWhen { false }
     filesMatching(['META-INF/mods.toml', 'META-INF/neoforge.mods.toml', 'pack.mcmeta', 'fabric.mod.json', "watermedia/version.cfg"]) {
@@ -71,9 +71,19 @@ processResources {
     }
 }
 
+// SHADOWJAR IS THE PUBLISHED ARTIFACT (RELOCATES XZ); THE THIN JAR IS DISABLED SO ONLY IT LANDS IN build/libs
 jar {
-    duplicatesStrategy = DuplicatesStrategy.WARN
+    enabled = false
+}
 
+shadowJar {
+    archiveClassifier = ''
+    configurations = [project.configurations.include]
+
+    // RELOCATE XZ SO IT DOES NOT COLLIDE WITH OTHER MODS THAT BUNDLE org.tukaani.xz UNRELOCATED
+    relocate 'org.tukaani.xz', 'org.watermedia.libs.xz'
+
+    duplicatesStrategy = DuplicatesStrategy.WARN
     manifest {
         attributes "id"                         : id
         attributes "version"                    : version
@@ -84,31 +94,26 @@ jar {
         attributes "Implementation-Version"     : version
         attributes "Implementation-Vendor"      : authors
         attributes "Implementation-Timestamp"   : new Date().format("yyyy-MM-dd'T'HH:mm:ssZ")
-        attributes "Main-Class": "org.watermedia.app.Main"
+        attributes "Main-Class": mainclass
     }
-    from {
-        configurations.include.collect {
-            it.isDirectory() ? it : zipTree(it)
-        }
-    }
-    exclude('META-INF/versions/', 'META-INF/maven/')
+    exclude 'META-INF/versions/**', 'META-INF/maven/**'
     // COMBINE DUPLICATE SERVICE FILES INSTEAD OF OVERWRITING THEM
-    filesMatching('META-INF/services/*') {
-        duplicatesStrategy = DuplicatesStrategy.INCLUDE
-    }
+    mergeServiceFiles()
 }
 
+assemble.dependsOn shadowJar
+
+// PUBLISH METADATA PARSED FROM gradle.properties
+def mcVers = minecraftversions.split(',').collect { it.trim() }
+def javaVers = javaversions.split(',').collect { JavaVersion.toVersion(it.trim()) }
+def loaders = modloaders.split(',').collect { it.trim() }
+
 publishMods {
-    file = jar.archiveFile
+    file = shadowJar.archiveFile
     changelog = getChangelogText()
-    type = "alpha".equalsIgnoreCase(project.properties.versiontype?.toString())
-            ? ALPHA : "beta".equalsIgnoreCase(project.properties.versiontype?.toString())
-            ? BETA : "release".equalsIgnoreCase(project.properties.versiontype?.toString())
-            ? STABLE : ALPHA
-    displayName = "WM-Binaries/${project.properties.version}"
-    modLoaders.add("forge")
-    modLoaders.add("neoforge")
-    modLoaders.add("fabric")
+    type = ["alpha": ALPHA, "beta": BETA, "release": STABLE].getOrDefault(project.versiontype.toString().toLowerCase(), ALPHA)
+    displayName = "$publishname/$version"
+    modLoaders.addAll(loaders)
     maxRetries = 2
 
     dryRun = false
@@ -116,8 +121,8 @@ publishMods {
     curseforge {
         accessToken = CF_TOKEN
         projectId = curseforgeid
-        minecraftVersions.addAll("1.18.2", "1.19.2", "1.20.1", "1.21.1", "1.21.11")
-        javaVersions.addAll(JavaVersion.VERSION_25, JavaVersion.VERSION_21, JavaVersion.VERSION_17)
+        minecraftVersions.addAll(mcVers)
+        javaVersions.addAll(javaVers)
         clientRequired = true
         serverRequired = false
         projectSlug = id
@@ -127,16 +132,11 @@ publishMods {
     modrinth {
         accessToken = MT_TOKEN
         projectId = modrinthid
-        minecraftVersions.addAll("1.18.2", "1.19.2", "1.20.1", "1.21.1", "1.21.11")
+        minecraftVersions.addAll(mcVers)
         requires("watermedia")
     }
 }
 
 def getChangelogText() {
-    def result = ""
-    for (String line: file('CHANGELOG.md').readLines('UTF-8')) {
-        if (line.isEmpty()) return result
-        result += line + '\n'
-    }
-    return result
+    return file('CHANGELOG.md').readLines('UTF-8').takeWhile { !it.isEmpty() }.join('\n')
 }
