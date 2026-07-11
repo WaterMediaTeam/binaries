@@ -1,3 +1,5 @@
+import org.gradle.api.attributes.Usage
+
 plugins {
     id 'java'
     id "me.modmuss50.mod-publish-plugin" version "1.1.+"
@@ -29,7 +31,14 @@ repositories {
 configurations {
     include
     include.extendsFrom(implementation)
-    library
+
+    // BINARIES COMPILES AGAINST WATERMEDIA'S JAVA-API VARIANT SO IT INHERITS THE PROVIDED LIBS
+    // WATERMEDIA EXPOSES VIA compileOnlyApi (tools, log4j, gson, modloaders) WITHOUT REDECLARING THEM
+    library {
+        attributes {
+            attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage, Usage.JAVA_API))
+        }
+    }
 }
 
 sourceSets {
@@ -46,14 +55,11 @@ sourceSets {
 }
 
 dependencies {
-    // DEPENDENCIES INCLUDED IN THE FINAL JAR
-    library "com.github.WaterMediaTeam:modloaders:$loaders_version"
-    library "org.watermedia:tools"
+    // WATERMEDIA IS THE PROVIDER: IT EXPOSES tools, log4j, gson AND modloaders TRANSITIVELY
+    // (SEE ITS compileOnlyApi), SO BINARIES COMPILES AGAINST WATERMEDIA ALONE
+    library "org.watermedia:watermedia"
 
-    // DEPENDENCIES NOT INCLUDED IN MINECRAFT
-    library "org.apache.logging.log4j:log4j-api:$log4j_version"
-    library "org.apache.logging.log4j:log4j-core:$log4j_version"
-    library "com.google.code.gson:gson:$gson_version"
+    // SHADED INTO THE BINARIES JAR (XZ DECOMPRESSES THE SHIPPED NATIVE ZIPS)
     include "org.tukaani:xz:$xz_version"
 }
 
@@ -86,9 +92,8 @@ jar {
         }
     }
     exclude('META-INF/versions/', 'META-INF/maven/')
-    // Configurar estrategia para combinar archivos de servicios duplicados
+    // COMBINE DUPLICATE SERVICE FILES INSTEAD OF OVERWRITING THEM
     filesMatching('META-INF/services/*') {
-        // Combinar contenido de archivos de servicio con el mismo nombre
         duplicatesStrategy = DuplicatesStrategy.INCLUDE
     }
 }

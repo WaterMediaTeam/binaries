@@ -3,11 +3,10 @@ package org.watermedia.binaries;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import org.apache.logging.log4j.Marker;
 import org.apache.logging.log4j.MarkerManager;
+import org.watermedia.api.util.NetRequest;
 import org.watermedia.tools.IOTool;
-import org.watermedia.tools.NetTool;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -111,7 +110,9 @@ public final class YtDlpBinary {
             Files.createDirectories(dir);
             final Path part = Files.createTempFile(dir, this.binaryName, ".part");
             try {
-                NetTool.download(latest.url, part);
+                try (final NetRequest req = NetRequest.create(latest.url).send()) {
+                    req.download(part);
+                }
                 if (latest.sha256 != null) IOTool.verifySha256(part, latest.sha256);
                 IOTool.move(part, binary);
                 Files.writeString(versionFile, latest.version);
@@ -127,12 +128,19 @@ public final class YtDlpBinary {
     // QUERIES GITHUB FOR THE LATEST yt-dlp RELEASE AND RESOLVES THIS PLATFORM'S BINARY ASSET + ITS SHA-256
     private Release latest() throws IOException {
         final JsonObject release;
-        try {
-            release = JsonParser.parseString(NetTool.get(API_LATEST)).getAsJsonObject();
+        try (final NetRequest req = NetRequest.create(API_LATEST).accept(NetRequest.ACCEPT_JSON).send()) {
+            if (req.statusCode() != 200) {
+                throw new IOException("GET failed (HTTP " + req.statusCode() + "): " + API_LATEST);
+            }
+            final JsonElement body = req.json(); // NULL WHEN THE RESPONSE IS NOT application/json
+            release = body == null ? null : body.getAsJsonObject();
         } catch (final IOException e) {
             throw e;
         } catch (final Exception e) {
             throw new IOException("Unparseable yt-dlp release metadata", e);
+        }
+        if (release == null) {
+            throw new IOException("Non-JSON yt-dlp release metadata: " + API_LATEST);
         }
         final String version = release.get("tag_name").getAsString();
         final JsonArray assets = release.getAsJsonArray("assets");
@@ -152,14 +160,21 @@ public final class YtDlpBinary {
 
     // PARSES A "<hash>  [*]<filename>" CHECKSUMS FILE AND RETURNS THE HASH FOR target, OR null IF ABSENT
     private static String sha256For(final String sumsUrl, final String target) throws IOException {
-        for (final String line : NetTool.get(sumsUrl).split("\\R")) {
+        final String sums;
+        try (final NetRequest req = NetRequest.create(sumsUrl).send()) {
+            if (req.statusCode() != 200) {
+                throw new IOException("GET failed (HTTP " + req.statusCode() + "): " + sumsUrl);
+            }
+            sums = req.readAllAsString();
+        }
+        for (final String line : sums.split("\\R")) {
             final String[] parts = line.strip().split("\\s+");
             if (parts.length < 2) continue;
             String file = parts[parts.length - 1];
             if (file.startsWith("*")) file = file.substring(1); // BINARY-MODE MARKER
             if (file.equals(target)) return parts[0];
         }
-        return null; // NOT LISTED — THE DOWNLOAD STILL GETS NetTool'S TRUNCATION CHECK + HTTPS
+        return null; // NOT LISTED — THE DOWNLOAD STILL GETS NetRequest'S TRUNCATION CHECK + HTTPS
     }
 
     // A RESOLVED RELEASE ASSET: TAG, DOWNLOAD URL, AND ITS EXPECTED SHA-256 (NULL WHEN UNLISTED)

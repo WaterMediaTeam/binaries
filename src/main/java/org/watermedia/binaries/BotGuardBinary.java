@@ -3,12 +3,11 @@ package org.watermedia.binaries;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import org.apache.logging.log4j.Marker;
 import org.apache.logging.log4j.MarkerManager;
 import org.tukaani.xz.XZInputStream;
+import org.watermedia.api.util.NetRequest;
 import org.watermedia.tools.IOTool;
-import org.watermedia.tools.NetTool;
 
 import java.io.BufferedInputStream;
 import java.io.IOException;
@@ -29,7 +28,7 @@ import static org.watermedia.binaries.WaterMediaBinaries.LOGGER;
  * <p>Resolution is lazy (first {@link #executable()} call) and memoised, so the API is hit at most once
  * per session and the download only occurs when a YouTube link actually needs a po_token. If the API is
  * unreachable but a binary is already cached, that cached binary is used (updates resume next session).
- * Shared download plumbing lives in {@link NetTool}/{@link IOTool}; this class owns the per-platform asset
+ * Shared download plumbing lives in {@link NetRequest}/{@link IOTool}; this class owns the per-platform asset
  * selection and the archive extraction.
  */
 public final class BotGuardBinary {
@@ -141,12 +140,19 @@ public final class BotGuardBinary {
     // ASSETS ARE MATCHED BY SUFFIX BECAUSE THE LEADING "<name>-v<version>" PART MOVES WITH EACH RELEASE.
     private Release latest() throws IOException {
         final JsonObject release;
-        try {
-            release = JsonParser.parseString(NetTool.get(API_LATEST)).getAsJsonObject();
+        try (final NetRequest req = NetRequest.create(API_LATEST).accept(NetRequest.ACCEPT_JSON).send()) {
+            if (req.statusCode() != 200) {
+                throw new IOException("GET failed (HTTP " + req.statusCode() + "): " + API_LATEST);
+            }
+            final JsonElement body = req.json(); // NULL WHEN THE RESPONSE IS NOT application/json
+            release = body == null ? null : body.getAsJsonObject();
         } catch (final IOException e) {
             throw e;
         } catch (final Exception e) {
             throw new IOException("Unparseable rustypipe-botguard release metadata", e);
+        }
+        if (release == null) {
+            throw new IOException("Non-JSON rustypipe-botguard release metadata: " + API_LATEST);
         }
         final String version = release.get("tag_name").getAsString();
         final JsonArray assets = release.getAsJsonArray("assets");
@@ -168,7 +174,9 @@ public final class BotGuardBinary {
         Files.createDirectories(dir);
         final Path archive = Files.createTempFile(dir, "rustypipe-botguard", this.zip ? ".zip" : ".tar.xz");
         try {
-            NetTool.download(url, archive);
+            try (final NetRequest req = NetRequest.create(url).send()) {
+                req.download(archive);
+            }
 
             if (this.zip) {
                 // THE WINDOWS ZIP CARRIES rustypipe-botguard.exe AT ITS ROOT — EXTRACT TO A TEMP DIR,

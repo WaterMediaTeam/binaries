@@ -1,3 +1,6 @@
+# RELEASEE 3.0.0-rc.4
+- 🛠️ Downloads now run through WaterMedia's `NetRequest` (binaries and watermedia are codependent; `NetTool` removed)
+
 # 📦 RELEASE 3.0.0-rc.4
 - ✨ Added YTDPL and BotGuard download manager (downloads latest available binary from github)
 - 🛠️ Updated shipped binaries from LGPL compiled binaries to GPL ones (adds x264 and x265)
