@@ -112,7 +112,7 @@ publishMods {
     file = shadowJar.archiveFile
     changelog = getChangelogText()
     type = ["alpha": ALPHA, "beta": BETA, "release": STABLE].getOrDefault(project.versiontype.toString().toLowerCase(), ALPHA)
-    displayName = "$publishname/$version"
+    displayName = "$version"
     modLoaders.addAll(loaders)
     maxRetries = 2
 
@@ -125,8 +125,9 @@ publishMods {
         javaVersions.addAll(javaVers)
         clientRequired = true
         serverRequired = false
-        projectSlug = id
+        projectSlug = slug // THE MOD ID USES AN UNDERSCORE; THE REAL CURSEFORGE SLUG IS HYPHENATED
         requires("watermedia")
+        // THE CURSEFORGE UPLOAD API HAS NO ENDPOINT TO EDIT THE PROJECT PAGE DESCRIPTION; SYNC IS MODRINTH-ONLY
     }
 
     modrinth {
@@ -134,6 +135,7 @@ publishMods {
         projectId = modrinthid
         minecraftVersions.addAll(mcVers)
         requires("watermedia")
+        projectDescription = providers.fileContents(layout.projectDirectory.file("README.md")).asText
     }
 }
 

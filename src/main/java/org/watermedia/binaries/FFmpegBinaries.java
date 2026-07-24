@@ -5,6 +5,10 @@ import org.apache.logging.log4j.MarkerManager;
 import org.watermedia.tools.IOTool;
 import org.watermedia.tools.VersionTool;
 
+import java.io.FilterInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URL;
 import java.nio.file.Path;
 import java.util.Objects;
 
@@ -14,12 +18,13 @@ class FFmpegBinaries {
     private static final Marker IT = MarkerManager.getMarker(FFmpegBinaries.class.getSimpleName());
     private static final String RESOURCE_PATH = "libs/ffmpeg-%s.zip";
 
-    static boolean start(final Path baseDir) throws Exception {
+    static boolean start(final Path baseDir, final WaterMediaBinaries module) throws Exception {
         final String platform = IOTool.platformClassifier();
         final String resourcePath = String.format(RESOURCE_PATH, platform);
+        final ClassLoader loader = FFmpegBinaries.class.getClassLoader();
 
         // CHECK VERSION
-        final var zipVersion = new VersionTool(IOTool.jarReadZip(FFmpegBinaries.class.getClassLoader().getResourceAsStream(resourcePath), IOTool.VERSION_FILE));
+        final var zipVersion = new VersionTool(IOTool.jarReadZip(loader.getResourceAsStream(resourcePath), IOTool.VERSION_FILE));
         final var currentVersion = new VersionTool(IOTool.read(baseDir.resolve(IOTool.VERSION_FILE).toFile()));
 
         LOGGER.info(IT, "FFMPEG in JAR | Version: {} - Path: {}", zipVersion, resourcePath);
@@ -38,8 +43,31 @@ class FFmpegBinaries {
                 return  false;
             }
 
-            // EXTRACT NEW VERSION
-            if (IOTool.jarExtractZip(FFmpegBinaries.class.getClassLoader().getResourceAsStream(resourcePath), baseDir.toFile())) {
+            // EXTRACT NEW VERSION — COUNT THE COMPRESSED BYTES READ FROM THE SHIPPED ZIP AGAINST ITS
+            // RESOURCE SIZE SO THE BOOT UI CAN DRAW A REAL PROGRESS BAR (0 TOTAL = INDETERMINATE)
+            final long totalBytes = resourceSize(loader.getResource(resourcePath));
+            final String zipName = resourcePath.substring(resourcePath.lastIndexOf('/') + 1);
+            module.work(zipName, 0L, totalBytes);
+            final InputStream counted = new FilterInputStream(loader.getResourceAsStream(resourcePath)) {
+                private long count;
+
+                @Override
+                public int read() throws IOException {
+                    final int b = super.read();
+                    if (b >= 0) module.work(zipName, ++this.count, totalBytes);
+                    return b;
+                }
+
+                @Override
+                public int read(final byte[] buf, final int off, final int len) throws IOException {
+                    final int n = super.read(buf, off, len);
+                    if (n > 0) module.work(zipName, this.count += n, totalBytes);
+                    return n;
+                }
+            };
+            if (IOTool.jarExtractZip(counted, baseDir.toFile())) {
+                // THE ZIP TAIL (CENTRAL DIRECTORY) MAY STAY UNREAD — SNAP THE BAR TO ITS END
+                module.work(zipName, totalBytes, totalBytes);
                 LOGGER.info(IT, "Successfully extracted FFmpeg {}", zipVersion);
             } else {
                 LOGGER.error(IT, "Failed to extract FFmpeg {} for platform", zipVersion);
@@ -75,5 +103,15 @@ class FFmpegBinaries {
             LOGGER.info(IT, "No FFmpeg files to clean up");
         }
         return true;
+    }
+
+    // SIZE OF THE SHIPPED ZIP RESOURCE, OR 0 WHEN UNKNOWN (JAR AND FILE URLS BOTH REPORT IT)
+    private static long resourceSize(final URL resource) {
+        if (resource == null) return 0L;
+        try {
+            return Math.max(0L, resource.openConnection().getContentLengthLong());
+        } catch (final IOException e) {
+            return 0L;
+        }
     }
 }

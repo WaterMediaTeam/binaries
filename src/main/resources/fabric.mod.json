@@ -6,7 +6,7 @@
   "description": "$description",
   "authors": $authors_list,
   "contact": {
-    "homepage": "https://www.curseforge.com/minecraft/mc-mods/watermedia/",
+    "homepage": "https://www.curseforge.com/minecraft/mc-mods/watermedia-binaries/",
     "sources": "https://github.com/$github",
     "issues": "https://github.com/$github/issues",
     "email": "SrRapero720@hotmail.com"
