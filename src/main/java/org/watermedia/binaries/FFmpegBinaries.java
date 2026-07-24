@@ -35,7 +35,15 @@ class FFmpegBinaries {
         final boolean stale = currentVersion.isZero()
                 || !currentVersion.atLeast(zipVersion)
                 || (currentVersion.compareTo(zipVersion) == 0 && !Objects.equals(currentVersion.extra, zipVersion.extra));
-        if (!zipVersion.isZero() && stale) {
+        if (zipVersion.isZero()) {
+            // NO BUNDLED ZIP FOR THIS PLATFORM (MISSING RESOURCE OR UNREADABLE): A VALID EXTRACTED
+            // INSTALL STILL WORKS, BUT WITH NOTHING ON DISK EITHER THERE IS NOTHING TO LOAD
+            if (currentVersion.isZero()) {
+                LOGGER.error(IT, "FFmpeg not bundled at {} and no extracted copy at {}", resourcePath, baseDir);
+                return false;
+            }
+            LOGGER.warn(IT, "FFmpeg not bundled at {}, keeping extracted {}", resourcePath, currentVersion);
+        } else if (stale) {
             LOGGER.info(IT, "Starting FFmpeg {} extraction for platform {}", zipVersion, platform);
 
             // CLEANUP OLD VERSION
