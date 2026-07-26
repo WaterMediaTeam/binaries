@@ -96,7 +96,12 @@ shadowJar {
         attributes "Implementation-Timestamp"   : new Date().format("yyyy-MM-dd'T'HH:mm:ssZ")
         attributes "Main-Class": mainclass
     }
-    exclude 'META-INF/versions/**', 'META-INF/maven/**'
+    // XZ IS A MULTI-RELEASE JAR AND SHADOW COPIES ITS `Multi-Release: true` ONTO OUR MANIFEST (IT SCANS
+    // THE SHADED DEPS ON EXECUTION, SO THE ATTRIBUTE CANNOT BE UNSET FROM THE manifest {} BLOCK ABOVE).
+    // DROPPING META-INF/versions WHOLESALE LEFT THE FLAG WITHOUT ITS PAYLOAD AND FML (FORGE/NEOFORGE)
+    // BLEW UP LOOKING FOR IT, SO KEEP THE VERSIONED CLASSES — SHADOW RELOCATES THEM TOO — AND DROP ONLY
+    // THE module-info, WHICH WOULD OTHERWISE DECLARE A STALE `org.tukaani.xz` MODULE INSIDE OUR JAR.
+    exclude 'META-INF/versions/*/module-info.class', 'META-INF/maven/**'
     // COMBINE DUPLICATE SERVICE FILES INSTEAD OF OVERWRITING THEM
     mergeServiceFiles()
 }
