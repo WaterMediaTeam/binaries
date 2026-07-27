@@ -1,3 +1,5 @@
+import me.modmuss50.mpp.platforms.curseforge.Curseforge
+import me.modmuss50.mpp.platforms.modrinth.Modrinth
 import org.gradle.api.attributes.Usage
 
 plugins {
@@ -112,36 +114,42 @@ assemble.dependsOn shadowJar
 def mcVers = minecraftversions.split(',').collect { it.trim() }
 def javaVers = javaversions.split(',').collect { JavaVersion.toVersion(it.trim()) }
 def loaders = modloaders.split(',').collect { it.trim() }
+// INSIDE publishMods THE DELEGATE IS THE EXTENSION, SO A BARE `version` HITS ITS Property<String> AND
+// STRINGIFIES TO "extension 'publishMods' property 'version'"; READ THE PROJECT VERSION OUT HERE INSTEAD
+def publishVersion = project.version.toString()
 
+// PLATFORMS ARE CONFIGURED THROUGH THE TYPED Action OVERLOAD AND AN EXPLICIT RECEIVER: THE PLUGIN ALSO
+// EXPOSES KOTLIN Closure OVERLOADS THAT THE GROOVY IDE INSPECTION CANNOT RESOLVE, WHICH FLAGS THE WHOLE
+// BLOCK AND LEAVES IT WITHOUT A DELEGATE (NO COMPLETION); IT ALSO KILLS THE SHADOWING ABOVE FOR GOOD
 publishMods {
     file = shadowJar.archiveFile
     changelog = getChangelogText()
     type = ["alpha": ALPHA, "beta": BETA, "release": STABLE].getOrDefault(project.versiontype.toString().toLowerCase(), ALPHA)
-    displayName = "$version"
+    displayName = publishVersion
     modLoaders.addAll(loaders)
     maxRetries = 2
 
     dryRun = false
 
-    curseforge {
-        accessToken = CF_TOKEN
-        projectId = curseforgeid
-        minecraftVersions.addAll(mcVers)
-        javaVersions.addAll(javaVers)
-        clientRequired = true
-        serverRequired = false
-        projectSlug = slug // THE MOD ID USES AN UNDERSCORE; THE REAL CURSEFORGE SLUG IS HYPHENATED
-        requires("watermedia")
+    curseforge({ Curseforge cf ->
+        cf.accessToken = CF_TOKEN
+        cf.projectId = curseforgeid
+        cf.minecraftVersions.addAll(mcVers)
+        cf.javaVersions.addAll(javaVers)
+        cf.clientRequired = true
+        cf.serverRequired = false
+        cf.projectSlug = slug // THE MOD ID USES AN UNDERSCORE; THE REAL CURSEFORGE SLUG IS HYPHENATED
+        cf.requires("watermedia")
         // THE CURSEFORGE UPLOAD API HAS NO ENDPOINT TO EDIT THE PROJECT PAGE DESCRIPTION; SYNC IS MODRINTH-ONLY
-    }
+    } as Action<Curseforge>)
 
-    modrinth {
-        accessToken = MT_TOKEN
-        projectId = modrinthid
-        minecraftVersions.addAll(mcVers)
-        requires("watermedia")
-        projectDescription = providers.fileContents(layout.projectDirectory.file("README.md")).asText
-    }
+    modrinth({ Modrinth mr ->
+        mr.accessToken = MT_TOKEN
+        mr.projectId = modrinthid
+        mr.minecraftVersions.addAll(mcVers)
+        mr.requires("watermedia")
+        mr.projectDescription = providers.fileContents(layout.projectDirectory.file("README.md")).asText
+    } as Action<Modrinth>)
 }
 
 def getChangelogText() {
