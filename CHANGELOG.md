@@ -1,3 +1,6 @@
+# RELEASE 3.0.0.6 (RC)
+- 🐛 Fixed jar crashes the game asking for multirelease folder
+
 # RELEASEE 3.0.0-rc.5
 - 🛠️ Updated to WATERMeDIA 3.0.0.22 (minimal version)
 - 🛠️ Now requires WATERMeDIA to be loaded as a mod.
