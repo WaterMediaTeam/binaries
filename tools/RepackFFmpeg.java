@@ -79,8 +79,11 @@ public final class RepackFFmpeg {
         if (rebuilt != null) {
             manifest.append("source.ref=").append(properties.getProperty("ffmpeg_source_ref")).append('\n')
                     .append("libxml2.version=").append(properties.getProperty("libxml2_version")).append('\n')
+                    .append("libxml2.sha256=").append(properties.getProperty("libxml2_sha256")).append('\n')
                     .append("openssl.version=").append(properties.getProperty("openssl_version")).append('\n')
-                    .append("tls.patch.sha256=").append(properties.getProperty("ffmpeg_tls_patch_sha256")).append('\n');
+                    .append("openssl.sha256=").append(properties.getProperty("openssl_sha256")).append('\n')
+                    .append("tls.patch.sha256=").append(properties.getProperty("ffmpeg_tls_patch_sha256")).append('\n')
+                    .append("security.patch.sha256=").append(properties.getProperty("ffmpeg_security_patch_sha256")).append('\n');
         }
 
         for (final var platform: platforms.entrySet()) {
@@ -88,6 +91,7 @@ public final class RepackFFmpeg {
             final URI uri;
             final Path source;
             final String expected;
+            String recipeHash = null;
             if (rebuilt == null) {
                 uri = URI.create("https://repo.maven.apache.org/maven2/org/bytedeco/ffmpeg/" + version + "/" + name);
                 source = downloads.resolve(name);
@@ -123,10 +127,16 @@ public final class RepackFFmpeg {
                         || !properties.getProperty("openssl_sha256").equalsIgnoreCase(record.getProperty("openssl.sha256", ""))
                         || !properties.getProperty("ffmpeg_tls_patch_sha256", "").matches("[a-fA-F0-9]{64}")
                         || !properties.getProperty("ffmpeg_tls_patch_sha256").equalsIgnoreCase(record.getProperty("tls.patch.sha256", ""))
+                        || !properties.getProperty("ffmpeg_security_patch_sha256", "").matches("[a-fA-F0-9]{64}")
+                        || !properties.getProperty("ffmpeg_security_patch_sha256").equalsIgnoreCase(record.getProperty("security.patch.sha256", ""))
                         || !"JNI-original-wrappers,DASH,recursive-entities,libxml2-version,openssl-version,imports-closure,clean-environment,TLS".equals(record.getProperty("verification"))) {
                     throw new IOException("Candidate version or native verification record does not match: " + candidate);
                 }
                 source = candidate.resolve(name);
+                recipeHash = record.getProperty("recipe.sha256");
+                if (recipeHash == null || !recipeHash.matches("[a-fA-F0-9]{64}")) {
+                    throw new IOException("Candidate recipe SHA-256 is missing or invalid: " + candidate);
+                }
                 final String digest = record.getProperty("archive.sha256");
                 if (digest == null || !digest.matches("[a-fA-F0-9]{64}") || !hash(source, "SHA-256").equalsIgnoreCase(digest)) {
                     throw new IOException("Candidate archive SHA-256 mismatch: " + source);
@@ -143,7 +153,10 @@ public final class RepackFFmpeg {
                 for (final var entry: jar.stream().toList()) {
                     if (entry.isDirectory() || !entry.getName().startsWith(prefix)) continue;
                     final String file = entry.getName().substring(prefix.length());
-                    if (!file.matches("[^/\\\\]+(?:\\.dll|\\.dylib|\\.so(?:\\.\\d+)*)")) continue;
+                    if (!file.matches("(?s).*(?:\\.dll|\\.dylib|\\.so(?:\\.\\d+)*)")) continue;
+                    if (!file.matches("[a-zA-Z0-9_+.-]+(?:\\.dll|\\.dylib|\\.so(?:\\.\\d+)*)")) {
+                        throw new IOException("Native library name cannot be represented safely in the flat manifest: " + file);
+                    }
                     if (libraries.put(file, entry) != null) throw new IOException("Duplicate native: " + file);
                 }
                 for (final String component: new String[]{"avcodec", "avdevice", "avfilter", "avformat", "avutil", "swresample", "swscale"}) {
@@ -221,6 +234,7 @@ public final class RepackFFmpeg {
                     .append(key).append(".archive.sha256=").append(hash(output, "SHA-256")).append('\n')
                     .append(key).append(".archive.bytes=").append(Files.size(output)).append('\n')
                     .append(key).append(".libraries=").append(hashes.size()).append('\n');
+            if (recipeHash != null) manifest.append(key).append(".recipe.sha256=").append(recipeHash.toLowerCase(java.util.Locale.ROOT)).append('\n');
             for (final var library: hashes.entrySet()) {
                 manifest.append(key).append(".native.").append(library.getKey()).append(".sha256=").append(library.getValue()).append('\n');
             }

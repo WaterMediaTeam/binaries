@@ -1,0 +1,891 @@
+diff --git a/libavcodec/adxdec.c b/libavcodec/adxdec.c
+index 019fc1a..a79ae43 100644
+--- a/libavcodec/adxdec.c
++++ b/libavcodec/adxdec.c
+@@ -173,6 +173,7 @@ static int adx_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+     new_extradata = av_packet_get_side_data(avpkt, AV_PKT_DATA_NEW_EXTRADATA,
+                                             &new_extradata_size);
+     if (new_extradata && new_extradata_size > 0) {
++        int old_channels = c->channels;
+         int header_size;
+         if ((ret = adx_decode_header(avctx, new_extradata,
+                                      new_extradata_size, &header_size,
+@@ -181,6 +182,10 @@ static int adx_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+             return AVERROR_INVALIDDATA;
+         }
+ 
++        c->channels      = avctx->ch_layout.nb_channels;
++        c->header_parsed = 1;
++        if (old_channels != c->channels)
++            memset(c->prev, 0, sizeof(c->prev));
+         c->eof = 0;
+     }
+ 
+diff --git a/libavcodec/cfhd.c b/libavcodec/cfhd.c
+index 4d430e3..128362a 100644
+--- a/libavcodec/cfhd.c
++++ b/libavcodec/cfhd.c
+@@ -1224,7 +1224,7 @@ finish:
+ 
+             if (lowpass_height > s->plane[plane].band[4][1].a_height || lowpass_width > s->plane[plane].band[4][1].a_width ||
+                 !highpass_stride || s->plane[plane].band[4][1].width > s->plane[plane].band[4][1].a_width ||
+-                lowpass_width < 3 || lowpass_height < 3) {
++                lowpass_width < 3 || lowpass_height < 3 || lowpass_width * 2 > s->plane[plane].width) {
+                 av_log(avctx, AV_LOG_ERROR, "Invalid plane dimensions\n");
+                 ret = AVERROR(EINVAL);
+                 goto end;
+@@ -1345,7 +1345,7 @@ finish:
+ 
+             if (lowpass_height > s->plane[plane].band[4][1].a_height || lowpass_width > s->plane[plane].band[4][1].a_width ||
+                 s->plane[plane].band[4][1].width > s->plane[plane].band[4][1].a_width ||
+-                lowpass_width < 3 || lowpass_height < 3) {
++                lowpass_width < 3 || lowpass_height < 3 || lowpass_width * 2 > s->plane[plane].width) {
+                 av_log(avctx, AV_LOG_ERROR, "Invalid plane dimensions\n");
+                 ret = AVERROR(EINVAL);
+                 goto end;
+diff --git a/libavcodec/dvbsub_parser.c b/libavcodec/dvbsub_parser.c
+index 4527e4d..a93f39b 100644
+--- a/libavcodec/dvbsub_parser.c
++++ b/libavcodec/dvbsub_parser.c
+@@ -104,7 +104,7 @@ static int dvbsub_parse(AVCodecParserContext *s,
+         }
+     }
+ 
+-    if (buf_size - buf_pos + pc->packet_index > PARSE_BUF_SIZE)
++    if (buf_size - buf_pos > PARSE_BUF_SIZE - pc->packet_index)
+         return buf_size;
+ 
+ /* if not currently in a packet, pass data */
+diff --git a/libavcodec/lcldec.c b/libavcodec/lcldec.c
+index e9d4283..71c6d07 100644
+--- a/libavcodec/lcldec.c
++++ b/libavcodec/lcldec.c
+@@ -119,6 +119,9 @@ static unsigned int mszh_decomp(const unsigned char * srcptr, int srclen, unsign
+         }
+     }
+ 
++    if (destptr < destptr_end)
++        memset(destptr, 0, destptr_end - destptr);
++
+     return destptr - destptr_bak;
+ }
+ 
+@@ -152,8 +155,11 @@ static int zlib_decomp(AVCodecContext *avctx, const uint8_t *src, int src_len, i
+     if (expected != (unsigned int)zstream->total_out) {
+         av_log(avctx, AV_LOG_ERROR, "Decoded size differs (%d != %lu)\n",
+                expected, zstream->total_out);
+-        if (expected > (unsigned int)zstream->total_out)
++        if (expected > (unsigned int)zstream->total_out) {
++            memset(c->decomp_buf + offset + zstream->total_out, 0,
++                   c->decomp_size - offset - zstream->total_out);
+             return (unsigned int)zstream->total_out;
++        }
+         return AVERROR_UNKNOWN;
+     }
+     return zstream->total_out;
+diff --git a/libavcodec/mace.c b/libavcodec/mace.c
+index 299e5f5..87e8026 100644
+--- a/libavcodec/mace.c
++++ b/libavcodec/mace.c
+@@ -252,7 +252,10 @@ static int mace_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+     }
+ 
+     /* get output buffer */
+-    frame->nb_samples = 3 * (buf_size << (1 - is_mace3)) / channels;
++    int64_t nb_samples = 3 * ((int64_t)buf_size << (1 - is_mace3)) / channels;
++    if (nb_samples > INT_MAX)
++        return AVERROR_INVALIDDATA;
++    frame->nb_samples = nb_samples;
+     if ((ret = ff_get_buffer(avctx, frame, 0)) < 0)
+         return ret;
+     samples = (int16_t **)frame->extended_data;
+diff --git a/libavcodec/nvdec.c b/libavcodec/nvdec.c
+index 7c29f25..787a9d7 100644
+--- a/libavcodec/nvdec.c
++++ b/libavcodec/nvdec.c
+@@ -628,8 +628,7 @@ int ff_nvdec_start_frame_sep_ref(AVCodecContext *avctx, AVFrame *frame, int has_
+             cf->ref_idx_ref = av_refstruct_pool_get(ctx->decoder_pool);
+             if (!cf->ref_idx_ref) {
+                 av_log(avctx, AV_LOG_ERROR, "No decoder surfaces left\n");
+-                ret = AVERROR(ENOMEM);
+-                goto fail;
++                return AVERROR(ENOMEM);
+             }
+         }
+         cf->ref_idx = *cf->ref_idx_ref;
+@@ -639,9 +638,6 @@ int ff_nvdec_start_frame_sep_ref(AVCodecContext *avctx, AVFrame *frame, int has_
+     }
+ 
+     return 0;
+-fail:
+-    nvdec_fdd_priv_free(cf);
+-    return ret;
+ }
+ 
+ int ff_nvdec_end_frame(AVCodecContext *avctx)
+diff --git a/libavcodec/pngenc.c b/libavcodec/pngenc.c
+index 82a9d5b..8e6bf42 100644
+--- a/libavcodec/pngenc.c
++++ b/libavcodec/pngenc.c
+@@ -72,6 +72,8 @@ typedef struct PNGEncContext {
+     int color_type;
+     int bits_per_pixel;
+ 
++    AVBufferRef *exif_data;
++
+     // APNG
+     uint32_t palette_checksum;   // Used to ensure a single unique palette
+     uint32_t sequence_number;
+@@ -377,7 +379,6 @@ static int encode_headers(AVCodecContext *avctx, const AVFrame *pict)
+ {
+     AVFrameSideData *side_data;
+     PNGEncContext *s = avctx->priv_data;
+-    AVBufferRef *exif_data = NULL;
+     int ret;
+ 
+     /* write png header */
+@@ -419,17 +420,10 @@ static int encode_headers(AVCodecContext *avctx, const AVFrame *pict)
+         }
+     }
+ 
+-    ret = ff_exif_get_buffer(avctx, pict, &exif_data, AV_EXIF_TIFF_HEADER);
+-    if (exif_data) {
+-        // png_write_chunk accepts an int, not a size_t, so we have to check overflow
+-        if (exif_data->size > INT_MAX - AV_INPUT_BUFFER_PADDING_SIZE)
+-            // that's a very big exif chunk, probably a bug
+-            av_log(avctx, AV_LOG_ERROR, "extremely large EXIF buffer detected, not writing\n");
+-        else
+-            png_write_chunk(&s->bytestream, MKTAG('e','X','I','f'), exif_data->data, exif_data->size);
+-        av_buffer_unref(&exif_data);
+-    } else if (ret < 0) {
+-        av_log(avctx, AV_LOG_WARNING, "unable to attach EXIF metadata: %s\n", av_err2str(ret));
++    if (s->exif_data) {
++        /* OVERFLOW IS CHECKED BEFORE ATTACHING THE BUFFER TO s->exif_data. */
++        png_write_chunk(&s->bytestream, MKTAG('e','X','I','f'), s->exif_data->data, s->exif_data->size);
++        av_buffer_unref(&s->exif_data);
+     }
+ 
+     side_data = av_frame_get_side_data(pict, AV_FRAME_DATA_ICC_PROFILE);
+@@ -649,25 +643,30 @@ static int add_icc_profile_size(AVCodecContext *avctx, const AVFrame *pict,
+ static int add_exif_profile_size(AVCodecContext *avctx, const AVFrame *pict,
+                                  uint64_t *max_packet_size)
+ {
+-    const AVFrameSideData *sd;
+     uint64_t new_pkt_size;
+-    /* includes orientation tag */
+-    const int base_exif_size = 92;
+-    uint64_t estimated_exif_size;
++    PNGEncContext *s = avctx->priv_data;
+ 
+-    sd = av_frame_get_side_data(pict, AV_FRAME_DATA_EXIF);
+-    estimated_exif_size = sd ? sd->size : 0;
+-    sd = av_frame_get_side_data(pict, AV_FRAME_DATA_DISPLAYMATRIX);
+-    if (sd)
+-        estimated_exif_size += base_exif_size;
++    int result = ff_exif_get_buffer(avctx, pict, &s->exif_data, AV_EXIF_TIFF_HEADER);
++    if (!s->exif_data) {
++        if (result < 0)
++            av_log(avctx, AV_LOG_WARNING, "unable to attach EXIF metadata: %s\n", av_err2str(result));
++        return 0;
++    }
+ 
+-    if (!estimated_exif_size)
++    /* png_write_chunk ACCEPTS int; CHECK OVERFLOW BEFORE NARROWING THE SIZE. */
++    if (s->exif_data->size > INT_MAX - AV_INPUT_BUFFER_PADDING_SIZE) {
++        /* THE EXIF CHUNK EXCEEDS THE SUPPORTED SIZE. */
++        av_log(avctx, AV_LOG_ERROR, "extremely large EXIF buffer detected, not writing\n");
++        av_buffer_unref(&s->exif_data);
+         return 0;
++    }
+ 
+     /* 12 is the png chunk header size */
+-    new_pkt_size = *max_packet_size + estimated_exif_size + 12;
+-    if (new_pkt_size < *max_packet_size)
++    new_pkt_size = *max_packet_size + s->exif_data->size + 12;
++    if (new_pkt_size < *max_packet_size) {
++        av_buffer_unref(&s->exif_data);
+         return AVERROR_INVALIDDATA;
++    }
+ 
+     *max_packet_size = new_pkt_size;
+ 
+@@ -1258,6 +1257,7 @@ static av_cold int png_enc_close(AVCodecContext *avctx)
+     ff_deflate_end(&s->zstream);
+     av_frame_free(&s->last_frame);
+     av_frame_free(&s->prev_frame);
++    av_buffer_unref(&s->exif_data);
+     av_freep(&s->last_frame_packet);
+     av_freep(&s->extra_data);
+     s->extra_data_size = 0;
+diff --git a/libavcodec/rasc.c b/libavcodec/rasc.c
+index 5f956a9..d784a44 100644
+--- a/libavcodec/rasc.c
++++ b/libavcodec/rasc.c
+@@ -320,6 +320,11 @@ static int decode_move(AVCodecContext *avctx,
+     return 0;
+ }
+ 
++static inline int dlta_room(unsigned cx, unsigned w, unsigned bpp, unsigned need)
++{
++    return cx + need <= w * bpp;
++}
++
+ #define NEXT_LINE                        \
+     if (cx >= w * s->bpp) {              \
+         cx = 0;                          \
+@@ -418,6 +423,8 @@ static int decode_dlta(AVCodecContext *avctx,
+         case 4:
+             fill = bytestream2_get_byte(&dc);
+             while (len > 0 && cy > 0) {
++                if (!dlta_room(cx, w, s->bpp, 4))
++                    return AVERROR_INVALIDDATA;
+                 AV_WL32(b1 + cx, AV_RL32(b2 + cx));
+                 AV_WL32(b2 + cx, fill);
+                 cx++;
+@@ -427,6 +434,8 @@ static int decode_dlta(AVCodecContext *avctx,
+         case 7:
+             fill = bytestream2_get_le32(&dc);
+             while (len > 0 && cy > 0) {
++                if (!dlta_room(cx, w, s->bpp, 4))
++                    return AVERROR_INVALIDDATA;
+                 AV_WL32(b1 + cx, AV_RL32(b2 + cx));
+                 AV_WL32(b2 + cx, fill);
+                 cx += 4;
+@@ -443,6 +452,8 @@ static int decode_dlta(AVCodecContext *avctx,
+             while (len > 0 && cy > 0) {
+                 unsigned v0, v1;
+ 
++                if (!dlta_room(cx, w, s->bpp, 4))
++                    return AVERROR_INVALIDDATA;
+                 v0 = AV_RL32(b2 + cx);
+                 v1 = AV_RL32(b1 + cx);
+                 AV_WL32(b2 + cx, v1);
+@@ -454,6 +465,8 @@ static int decode_dlta(AVCodecContext *avctx,
+         case 13:
+             while (len > 0 && cy > 0) {
+                 fill = bytestream2_get_le32(&dc);
++                if (!dlta_room(cx, w, s->bpp, 4))
++                    return AVERROR_INVALIDDATA;
+                 AV_WL32(b1 + cx, AV_RL32(b2 + cx));
+                 AV_WL32(b2 + cx, fill);
+                 cx += 4;
+diff --git a/libavcodec/rscc.c b/libavcodec/rscc.c
+index 3715e1c..5fde30e 100644
+--- a/libavcodec/rscc.c
++++ b/libavcodec/rscc.c
+@@ -311,6 +311,12 @@ static int rscc_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+             ret = AVERROR_UNKNOWN;
+             goto end;
+         }
++        if (len < pixel_size) {
++            av_log(avctx, AV_LOG_WARNING, "Deflated %lu bytes, but %d are needed\n",
++                   len, pixel_size);
++            memset(ctx->inflated_buf + len, 0, pixel_size - len);
++            pixel_size = len;
++        }
+         pixels = ctx->inflated_buf;
+     }
+ 
+diff --git a/libavcodec/screenpresso.c b/libavcodec/screenpresso.c
+index b271549..a13fb0d 100644
+--- a/libavcodec/screenpresso.c
++++ b/libavcodec/screenpresso.c
+@@ -137,6 +137,9 @@ static int screenpresso_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+         return AVERROR_INVALIDDATA;
+     }
+ 
++    /* THE CODEC USES ALIGNED STRIDES. */
++    src_linesize = FFALIGN(avctx->width * component_size, 4);
++
+     /* Inflate the frame after the 2 byte header */
+     ret = uncompress(ctx->inflated_buf, &length,
+                      avpkt->data + 2, avpkt->size - 2);
+@@ -144,14 +147,16 @@ static int screenpresso_decode_frame(AVCodecContext *avctx, AVFrame *frame,
+         av_log(avctx, AV_LOG_ERROR, "Deflate error %d.\n", ret);
+         return AVERROR_UNKNOWN;
+     }
++    if (length < src_linesize * avctx->height) {
++        av_log(avctx, AV_LOG_ERROR, "Deflated %lu bytes, but %d are needed\n",
++               length, src_linesize * avctx->height);
++        return AVERROR_INVALIDDATA;
++    }
+ 
+     ret = ff_reget_buffer(avctx, ctx->current, 0);
+     if (ret < 0)
+         return ret;
+ 
+-    /* Codec has aligned strides */
+-    src_linesize = FFALIGN(avctx->width * component_size, 4);
+-
+     /* When a keyframe is found, copy it (flipped) */
+     if (keyframe)
+         av_image_copy_plane(ctx->current->data[0] +
+diff --git a/libavcodec/tdsc.c b/libavcodec/tdsc.c
+index 8baf8e9..ecd67da 100644
+--- a/libavcodec/tdsc.c
++++ b/libavcodec/tdsc.c
+@@ -482,11 +482,15 @@ static int tdsc_parse_tdsf(AVCodecContext *avctx, int number_tiles)
+             return ret;
+         init_refframe = 1;
+     }
+-    ctx->refframe->width  = ctx->width  = w;
+-    ctx->refframe->height = ctx->height = h;
++    ctx->width  = w;
++    ctx->height = h;
+ 
+     /* Allocate the reference frame if not already done or on size change */
+     if (init_refframe) {
++        av_frame_unref(ctx->refframe);
++        ctx->refframe->format = avctx->pix_fmt;
++        ctx->refframe->width  = w;
++        ctx->refframe->height = h;
+         ret = av_frame_get_buffer(ctx->refframe, 0);
+         if (ret < 0)
+             return ret;
+diff --git a/libavcodec/tiff.c b/libavcodec/tiff.c
+index bb8120b..4daa426 100644
+--- a/libavcodec/tiff.c
++++ b/libavcodec/tiff.c
+@@ -526,6 +526,7 @@ static int tiff_unpack_zlib(TiffContext *s, AVFrame *p, uint8_t *dst, int stride
+     uint8_t *zbuf;
+     unsigned long outlen;
+     int ret, line;
++    int rows = is_yuv ? (lines + s->subsampling[1] - 1) / s->subsampling[1] : lines;
+     outlen = width * lines;
+     zbuf   = av_malloc(outlen);
+     if (!zbuf)
+@@ -545,6 +546,12 @@ static int tiff_unpack_zlib(TiffContext *s, AVFrame *p, uint8_t *dst, int stride
+         av_free(zbuf);
+         return AVERROR_UNKNOWN;
+     }
++    if (outlen < (unsigned long)width * rows) {
++        av_log(s->avctx, AV_LOG_ERROR, "Deflated %lu bytes, but %lu are needed\n",
++               outlen, (unsigned long)width * rows);
++        av_free(zbuf);
++        return AVERROR_INVALIDDATA;
++    }
+     src = zbuf;
+     for (line = 0; line < lines; line++) {
+         if (s->bpp < 8 && s->avctx->pix_fmt == AV_PIX_FMT_PAL8) {
+@@ -592,6 +599,7 @@ static int tiff_unpack_lzma(TiffContext *s, AVFrame *p, uint8_t *dst, int stride
+ {
+     uint64_t outlen = width * (uint64_t)lines;
+     int ret, line;
++    int rows = is_yuv ? (lines + s->subsampling[1] - 1) / s->subsampling[1] : lines;
+     uint8_t *buf = av_malloc(outlen);
+     if (!buf)
+         return AVERROR(ENOMEM);
+@@ -610,6 +618,12 @@ static int tiff_unpack_lzma(TiffContext *s, AVFrame *p, uint8_t *dst, int stride
+         av_free(buf);
+         return AVERROR_UNKNOWN;
+     }
++    if (outlen < (uint64_t)width * rows) {
++        av_log(s->avctx, AV_LOG_ERROR, "Uncompressed %"PRIu64" bytes, but %"PRIu64" are needed\n",
++               outlen, (uint64_t)width * rows);
++        av_free(buf);
++        return AVERROR_INVALIDDATA;
++    }
+     src = buf;
+     for (line = 0; line < lines; line++) {
+         if (s->bpp < 8 && s->avctx->pix_fmt == AV_PIX_FMT_PAL8) {
+diff --git a/libavcodec/vulkan_hevc.c b/libavcodec/vulkan_hevc.c
+index 8f0d1f6..9b9264f 100644
+--- a/libavcodec/vulkan_hevc.c
++++ b/libavcodec/vulkan_hevc.c
+@@ -875,6 +875,9 @@ static int vk_hevc_end_frame(AVCodecContext *avctx)
+                 vksps_p.vcl_hdr, &vksps_p.ptl, &vksps_p.dpbm,
+                 &vksps_p.pal, vksps_p.str, &vksps_p.ltr);
+ 
++        if (sps->vps->vps_num_hrd_parameters > HEVC_MAX_SUB_LAYERS)
++            return AVERROR_INVALIDDATA;
++
+         vkvps_p.sls = vkvps_ps;
+         set_vps(sps->vps, &vkvps, &vkvps_p.ptl, &vkvps_p.dpbm,
+                 vkvps_p.hdr, vkvps_p.sls);
+diff --git a/libavfilter/avfilter.c b/libavfilter/avfilter.c
+index bb0b665..c6692bb 100644
+--- a/libavfilter/avfilter.c
++++ b/libavfilter/avfilter.c
+@@ -1077,7 +1077,8 @@ int ff_filter_frame(AVFilterLink *link, AVFrame *frame)
+             strcmp(link->dst->filter->name, "idet") &&
+             strcmp(link->dst->filter->name, "null") &&
+             strcmp(link->dst->filter->name, "scale") &&
+-            strcmp(link->dst->filter->name, "libplacebo")) {
++            strcmp(link->dst->filter->name, "libplacebo") &&
++            strcmp(link->dst->filter->name, "hqdn3d")) {
+             av_assert1(frame->format        == link->format);
+             av_assert1(frame->width         == link->w);
+             av_assert1(frame->height        == link->h);
+diff --git a/libavfilter/vf_floodfill.c b/libavfilter/vf_floodfill.c
+index 6d89963..e569d5f 100644
+--- a/libavfilter/vf_floodfill.c
++++ b/libavfilter/vf_floodfill.c
+@@ -41,6 +41,7 @@ typedef struct FloodfillContext {
+     int nb_planes;
+     int back, front;
+     Points *points;
++    unsigned int points_size;
+ 
+     int (*is_same)(const AVFrame *frame, int x, int y,
+                    unsigned s0, unsigned s1, unsigned s2, unsigned s3);
+@@ -271,9 +272,6 @@ static int config_input(AVFilterLink *inlink)
+     }
+ 
+     s->front = s->back = 0;
+-    s->points = av_calloc(inlink->w * inlink->h, 4 * sizeof(Points));
+-    if (!s->points)
+-        return AVERROR(ENOMEM);
+ 
+     return 0;
+ }
+@@ -292,8 +290,23 @@ static int filter_frame(AVFilterLink *link, AVFrame *frame)
+     int s3 = s->s[3];
+     const int w = frame->width;
+     const int h = frame->height;
++    size_t nb_points, points_size;
+     int i, ret;
+ 
++    if (w > UINT16_MAX + 1 || h > UINT16_MAX + 1 ||
++        av_size_mult(w, h, &nb_points) < 0 ||
++        av_size_mult(nb_points, 4 * sizeof(*s->points), &points_size) < 0) {
++        av_frame_free(&frame);
++        return AVERROR(EINVAL);
++    }
++
++    av_fast_malloc(&s->points, &s->points_size, points_size);
++    if (!s->points) {
++        av_frame_free(&frame);
++        return AVERROR(ENOMEM);
++    }
++    s->front = s->back = 0;
++
+     if (is_inside(s->x, s->y, w, h)) {
+         s->pick_pixel(frame, s->x, s->y, &s0, &s1, &s2, &s3);
+ 
+diff --git a/libavfilter/vf_hqdn3d.c b/libavfilter/vf_hqdn3d.c
+index f79ef04..5623686 100644
+--- a/libavfilter/vf_hqdn3d.c
++++ b/libavfilter/vf_hqdn3d.c
+@@ -165,12 +165,8 @@ static int denoise_depth(HQDN3DContext *s,
+             case 14: ret = denoise_depth(__VA_ARGS__, 14); break;             \
+             case 16: ret = denoise_depth(__VA_ARGS__, 16); break;             \
+         }                                                                     \
+-        if (ret < 0) {                                                        \
+-            av_frame_free(&out);                                              \
+-            if (!direct)                                                      \
+-                av_frame_free(&in);                                           \
++        if (ret < 0)                                                          \
+             return ret;                                                       \
+-        }                                                                     \
+     } while (0)
+ 
+ static void precalc_coefs(double dist25, int depth, int16_t *ct)
+@@ -283,12 +279,15 @@ static int config_input(AVFilterLink *inlink)
+     ff_hqdn3d_init_x86(s);
+ #endif
+ 
++    s->format = inlink->format;
++    s->width  = inlink->w;
++    s->height = inlink->h;
++
+     return 0;
+ }
+ 
+ typedef struct ThreadData {
+     AVFrame *in, *out;
+-    int direct;
+ } ThreadData;
+ 
+ static int do_denoise(AVFilterContext *ctx, void *data, int job_nr, int n_jobs)
+@@ -297,7 +296,6 @@ static int do_denoise(AVFilterContext *ctx, void *data, int job_nr, int n_jobs)
+     const ThreadData *td = data;
+     AVFrame *out = td->out;
+     AVFrame *in = td->in;
+-    int direct = td->direct;
+ 
+     denoise(s, in->data[job_nr], out->data[job_nr],
+                 s->line[job_nr], &s->frame_prev[job_nr],
+@@ -314,15 +312,33 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
+ {
+     AVFilterContext *ctx  = inlink->dst;
+     AVFilterLink *outlink = ctx->outputs[0];
++    HQDN3DContext *s = ctx->priv;
+ 
+     AVFrame *out;
+     int direct = av_frame_is_writable(in) && !ctx->is_disabled;
+     ThreadData td;
++    int err, ret[3];
++
++    if (in->format != s->format) {
++        av_frame_free(&in);
++        return AVERROR(EINVAL);
++    }
++
++    if (in->width != s->width || in->height != s->height) {
++        inlink->w = in->width;
++        inlink->h = in->height;
++        if ((err = config_input(inlink)) < 0) {
++            av_frame_free(&in);
++            return err;
++        }
++        outlink->w = in->width;
++        outlink->h = in->height;
++    }
+ 
+     if (direct) {
+         out = in;
+     } else {
+-        out = ff_get_video_buffer(outlink, outlink->w, outlink->h);
++        out = ff_get_video_buffer(outlink, in->width, in->height);
+         if (!out) {
+             av_frame_free(&in);
+             return AVERROR(ENOMEM);
+@@ -333,9 +349,16 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
+ 
+     td.in = in;
+     td.out = out;
+-    td.direct = direct;
+     /* one thread per plane */
+-    ff_filter_execute(ctx, do_denoise, &td, NULL, 3);
++    ff_filter_execute(ctx, do_denoise, &td, ret, 3);
++    for (int i = 0; i < FF_ARRAY_ELEMS(ret); i++) {
++        if (ret[i] < 0) {
++            av_frame_free(&out);
++            if (!direct)
++                av_frame_free(&in);
++            return ret[i];
++        }
++    }
+ 
+     if (ctx->is_disabled) {
+         av_frame_free(&out);
+diff --git a/libavfilter/vf_hqdn3d.h b/libavfilter/vf_hqdn3d.h
+index 3279bbc..3467f27 100644
+--- a/libavfilter/vf_hqdn3d.h
++++ b/libavfilter/vf_hqdn3d.h
+@@ -36,6 +36,8 @@ typedef struct HQDN3DContext {
+     double strength[4];
+     int hsub, vsub;
+     int depth;
++    int width, height;
++    enum AVPixelFormat format;
+     void (*denoise_row[17])(uint8_t *src, uint8_t *dst, uint16_t *line_ant, uint16_t *frame_ant, ptrdiff_t w, int16_t *spatial, int16_t *temporal);
+ } HQDN3DContext;
+ 
+diff --git a/libavfilter/vf_quirc.c b/libavfilter/vf_quirc.c
+index 59dc84c..d2ba48e 100644
+--- a/libavfilter/vf_quirc.c
++++ b/libavfilter/vf_quirc.c
+@@ -36,6 +36,7 @@ typedef struct QuircContext {
+     const AVClass *class;
+ 
+     struct quirc *quirc;
++    int width, height;
+ } QuircContext;
+ 
+ static av_cold int init(AVFilterContext *ctx)
+@@ -67,6 +68,8 @@ static int config_input(AVFilterLink *inlink)
+     if (err == -1) {
+         return AVERROR(ENOMEM);
+     }
++    quirc->width  = inlink->w;
++    quirc->height = inlink->h;
+ 
+     return 0;
+ }
+@@ -80,6 +83,15 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
+     int codes_count;
+     uint8_t *image;
+ 
++    if (quirc->width != inlink->w || quirc->height != inlink->h) {
++        if (quirc_resize(quirc->quirc, inlink->w, inlink->h) < 0) {
++            av_frame_free(&frame);
++            return AVERROR(ENOMEM);
++        }
++        quirc->width  = inlink->w;
++        quirc->height = inlink->h;
++    }
++
+     /* copy input image to quirc buffer */
+     image = quirc_begin(quirc->quirc, NULL, NULL);
+     av_image_copy_plane(image, inlink->w,
+diff --git a/libavfilter/vf_swaprect.c b/libavfilter/vf_swaprect.c
+index 5d93f51..fe007ee 100644
+--- a/libavfilter/vf_swaprect.c
++++ b/libavfilter/vf_swaprect.c
+@@ -200,6 +200,7 @@ static int config_input(AVFilterLink *inlink)
+ {
+     AVFilterContext *ctx = inlink->dst;
+     SwapRectContext *s = ctx->priv;
++    int size = 0;
+ 
+     if (!s->w  || !s->h  ||
+         !s->x1 || !s->y1 ||
+@@ -210,7 +211,16 @@ static int config_input(AVFilterLink *inlink)
+     av_image_fill_max_pixsteps(s->pixsteps, NULL, s->desc);
+     s->nb_planes = av_pix_fmt_count_planes(inlink->format);
+ 
+-    s->temp = av_malloc_array(inlink->w, s->pixsteps[0]);
++    for (int p = 0; p < s->nb_planes; p++) {
++        int shift = p == 1 || p == 2 ? s->desc->log2_chroma_w : 0;
++        int width = AV_CEIL_RSHIFT(inlink->w, shift);
++
++        if (width > INT_MAX / s->pixsteps[p])
++            return AVERROR(EINVAL);
++        size = FFMAX(size, width * s->pixsteps[p]);
++    }
++
++    s->temp = av_malloc(size);
+     if (!s->temp)
+         return AVERROR(ENOMEM);
+ 
+diff --git a/libavformat/dashdec.c b/libavformat/dashdec.c
+index 4421210..4c91dbf 100644
+--- a/libavformat/dashdec.c
++++ b/libavformat/dashdec.c
+@@ -1503,8 +1503,11 @@ static void move_segments(struct representation *rep_src, struct representation
+         free_fragment_list(rep_dest);
+         if (rep_src->start_number > (rep_dest->start_number + rep_dest->n_fragments))
+             rep_dest->cur_seq_no = 0;
+-        else
++        else {
+             rep_dest->cur_seq_no += rep_src->start_number - rep_dest->start_number;
++            if (rep_dest->cur_seq_no < 0)
++                rep_dest->cur_seq_no = 0;
++        }
+         rep_dest->fragments    = rep_src->fragments;
+         rep_dest->n_fragments  = rep_src->n_fragments;
+         rep_dest->parent  = rep_src->parent;
+@@ -1624,7 +1627,7 @@ static struct fragment *get_current_fragment(struct representation *pls)
+     int reload_count = 0;
+ 
+     while (( !ff_check_interrupt(c->interrupt_callback)&& pls->n_fragments > 0)) {
+-        if (pls->cur_seq_no < pls->n_fragments) {
++        if (pls->cur_seq_no >= 0 && pls->cur_seq_no < pls->n_fragments) {
+             seg_ptr = pls->fragments[pls->cur_seq_no];
+             seg = av_mallocz(sizeof(struct fragment));
+             if (!seg) {
+diff --git a/libavformat/hevc.c b/libavformat/hevc.c
+index 5924f39..2cd7b1c 100644
+--- a/libavformat/hevc.c
++++ b/libavformat/hevc.c
+@@ -844,6 +844,9 @@ static int hvcc_array_add_nal_unit(const uint8_t *nal_buf, uint32_t nal_size,
+     int ret;
+     uint16_t numNalus = array->numNalus;
+ 
++    if (numNalus >= UINT16_MAX)
++        return AVERROR_INVALIDDATA;
++
+     ret = av_reallocp_array(&array->nal, numNalus + 1, sizeof(*array->nal));
+     if (ret < 0)
+         return ret;
+diff --git a/libavformat/iamf_parse.c b/libavformat/iamf_parse.c
+index d74a867..4c2df2c 100644
+--- a/libavformat/iamf_parse.c
++++ b/libavformat/iamf_parse.c
+@@ -1009,6 +1009,11 @@ static int mix_presentation_obu(void *s, IAMFContext *c, AVIOContext *pb, int le
+     mix_presentation->cmix = mix;
+ 
+     mix_presentation->count_label = ffio_read_leb(pbc);
++    if (mix_presentation->count_label > len - avio_tell(pbc)) {
++        mix_presentation->count_label = 0;
++        ret = AVERROR_INVALIDDATA;
++        goto fail;
++    }
+     mix_presentation->language_label = av_calloc(mix_presentation->count_label,
+                                                  sizeof(*mix_presentation->language_label));
+     if (!mix_presentation->language_label) {
+diff --git a/libavformat/librist.c b/libavformat/librist.c
+index 9669d5b..3c4b5e3 100644
+--- a/libavformat/librist.c
++++ b/libavformat/librist.c
+@@ -226,7 +226,7 @@ static int librist_read(URLContext *h, uint8_t *buf, int size)
+         }
+     }
+ 
+-    size = data_block->payload_len;
++    size = FFMIN(data_block->payload_len, size);
+     memcpy(buf, data_block->payload, size);
+ out_free:
+     rist_receiver_data_block_free2(&data_block);
+diff --git a/libavformat/mpeg.c b/libavformat/mpeg.c
+index a7a2ef7..1ce4bf9 100644
+--- a/libavformat/mpeg.c
++++ b/libavformat/mpeg.c
+@@ -841,6 +841,20 @@ static int vobsub_read_header(AVFormatContext *s)
+             }
+ 
+             if (!st || st->id != stream_id) {
++                st = NULL;
++                for (i = 0; i < s->nb_streams; i++) {
++                    if (s->streams[i]->id == stream_id) {
++                        st = s->streams[i];
++                        break;
++                    }
++                }
++            }
++            if (!st) {
++                if (s->nb_streams >= FF_ARRAY_ELEMS(vobsub->q)) {
++                    av_log(s, AV_LOG_ERROR, "Maximum number of subtitle streams reached\n");
++                    ret = AVERROR_INVALIDDATA;
++                    goto end;
++                }
+                 st = avformat_new_stream(s, NULL);
+                 if (!st) {
+                     ret = AVERROR(ENOMEM);
+@@ -865,14 +879,14 @@ static int vobsub_read_header(AVFormatContext *s)
+             timestamp = (hh*3600LL + mm*60LL + ss) * 1000LL + ms + delay;
+             timestamp = av_rescale_q(timestamp, av_make_q(1, 1000), st->time_base);
+ 
+-            sub = ff_subtitles_queue_insert(&vobsub->q[s->nb_streams - 1], "", 0, 0);
++            sub = ff_subtitles_queue_insert(&vobsub->q[st->index], "", 0, 0);
+             if (!sub) {
+                 ret = AVERROR(ENOMEM);
+                 goto end;
+             }
+             sub->pos = pos;
+             sub->pts = timestamp;
+-            sub->stream_index = s->nb_streams - 1;
++            sub->stream_index = st->index;
+ 
+         } else if (!strncmp(line, "alt:", 4)) {
+             const char *p = line + 4;
+diff --git a/libavformat/mpegenc.c b/libavformat/mpegenc.c
+index c41aa10..e7ef245 100644
+--- a/libavformat/mpegenc.c
++++ b/libavformat/mpegenc.c
+@@ -473,6 +473,15 @@ static av_cold int mpeg_mux_init(AVFormatContext *ctx)
+         if (!stream->fifo)
+             return AVERROR(ENOMEM);
+     }
++
++    /* THE SYSTEM HEADER FOLLOWS A PACK HEADER OF AT MOST 14 BYTES IN A 128-BYTE BUFFER.
++     * REJECT STREAM COUNTS WHOSE SYSTEM HEADER DOES NOT FIT. */
++    if (get_system_header_size(ctx) > 128 - 14) {
++        av_log(ctx, AV_LOG_ERROR,
++               "Too many streams to fit the MPEG program stream system header\n");
++        return AVERROR(EINVAL);
++    }
++
+     bitrate       = 0;
+     audio_bitrate = 0;
+     video_bitrate = 0;
+diff --git a/libavformat/rtpdec_asf.c b/libavformat/rtpdec_asf.c
+index b3b346f..f7fa69e 100644
+--- a/libavformat/rtpdec_asf.c
++++ b/libavformat/rtpdec_asf.c
+@@ -56,6 +56,8 @@ static int rtp_asf_fix_header(uint8_t *buf, int len)
+         uint64_t chunksize = AV_RL64(p + sizeof(ff_asf_guid));
+         int skip = 6 * 8 + 3 * 4 + sizeof(ff_asf_guid) * 2;
+         if (memcmp(p, ff_asf_file_header, sizeof(ff_asf_guid))) {
++            if (chunksize < sizeof(ff_asf_guid) + 8)
++                return -1;
+             if (chunksize > end - p)
+                 return -1;
+             p += chunksize;
+diff --git a/libavformat/rtpenc_av1.c b/libavformat/rtpenc_av1.c
+index fbf9212..52dbc80 100644
+--- a/libavformat/rtpenc_av1.c
++++ b/libavformat/rtpenc_av1.c
+@@ -116,8 +116,15 @@ void ff_rtp_send_av1(AVFormatContext *ctx, const uint8_t *frame_buf, int frame_s
+             if (!num_lebs) {
+                 break;
+             }
+-            buf_ptr += num_lebs + obu_size;
+-            rem_size -= num_lebs + obu_size;
++            buf_ptr += num_lebs;
++            rem_size -= num_lebs;
++            // BOUND THE OBU PAYLOAD AGAINST REMAINING DATA TO AVOID POINTER/SIZE WRAPAROUND.
++            // THE PACKETIZATION LOOP BELOW CHECKS THE SAME BOUNDARY.
++            if (obu_size > (uint32_t) rem_size) {
++                break;
++            }
++            buf_ptr += obu_size;
++            rem_size -= obu_size;
+         }
+ #else // RTPENC_AV1_SEARCH_SEQ_HEADER
+         av_log(ctx, AV_LOG_DEBUG, "Marking FIRST packet\n");
+@@ -170,7 +177,7 @@ void ff_rtp_send_av1(AVFormatContext *ctx, const uint8_t *frame_buf, int frame_s
+             return;
+         }
+ 
+-        if ((long) obu_size > frame_size) {
++        if (obu_size > (unsigned) frame_size) {
+             av_log(ctx, AV_LOG_ERROR, "AV1 OBU size %d larger than remaining frame size %d\n", obu_size, frame_size);
+             return;
+         }
+diff --git a/libavformat/rtpenc_vc2hq.c b/libavformat/rtpenc_vc2hq.c
+index cf54819..3b7147d 100644
+--- a/libavformat/rtpenc_vc2hq.c
++++ b/libavformat/rtpenc_vc2hq.c
+@@ -33,16 +33,23 @@
+ #define DIRAC_PIC_NR_SIZE                    4
+ #define DIRAC_RTP_PCODE_HQ_PIC_FRAGMENT      0xEC
+ 
+-static void send_packet(AVFormatContext *ctx, uint8_t parse_code, int info_hdr_size, const uint8_t *buf, int size, int i, int f, int rtp_m)
++static int send_packet(AVFormatContext *ctx, uint8_t parse_code, int info_hdr_size, const uint8_t *buf, int size, int i, int f, int rtp_m)
+ {
+     RTPMuxContext *rtp_ctx = ctx->priv_data;
+ 
++    if (size < 0 ||
++        size > rtp_ctx->max_payload_size - RTP_VC2HQ_PL_HEADER_SIZE - info_hdr_size) {
++        av_log(ctx, AV_LOG_ERROR, "VC-2 data unit too large for RTP payload buffer\n");
++        return AVERROR_INVALIDDATA;
++    }
++
+     AV_WB16(&rtp_ctx->buf[0], 0); /* extended sequence number */
+     AV_WB8 (&rtp_ctx->buf[2], i ? (f ? (0x03) : (0x02)) : 0x00); /* flags: interlaced, second field */
+     AV_WB8 (&rtp_ctx->buf[3], parse_code);
+     if (size > 0)
+         memcpy(&rtp_ctx->buf[4 + info_hdr_size], buf, size);
+     ff_rtp_send_data(ctx, rtp_ctx->buf, RTP_VC2HQ_PL_HEADER_SIZE + info_hdr_size + size, rtp_m);
++    return 0;
+ }
+ 
+ static int send_picture(AVFormatContext *ctx, const uint8_t *buf, int size, int interlaced)
+@@ -85,7 +92,8 @@ static int send_picture(AVFormatContext *ctx, const uint8_t *buf, int size, int
+     AV_WB16(&info_hdr[ 6], size_scaler);
+     AV_WB16(&info_hdr[ 8], frag_len);
+     AV_WB16(&info_hdr[10], 0 /* nr. of slices */);
+-    send_packet(ctx, DIRAC_RTP_PCODE_HQ_PIC_FRAGMENT, 12, buf, frag_len, interlaced, second_field, 0);
++    if (send_packet(ctx, DIRAC_RTP_PCODE_HQ_PIC_FRAGMENT, 12, buf, frag_len, interlaced, second_field, 0) < 0)
++        return AVERROR_INVALIDDATA;
+     buf += frag_len;
+     size -= frag_len;
+ 
+@@ -97,7 +105,8 @@ static int send_picture(AVFormatContext *ctx, const uint8_t *buf, int size, int
+         AV_WB16(&info_hdr[14], 0 /* slice y */);
+ 
+         size -= frag_len;
+-        send_packet(ctx, DIRAC_RTP_PCODE_HQ_PIC_FRAGMENT, 16, buf, frag_len, interlaced, second_field, size > 0 ? 0 : 1);
++        if (send_packet(ctx, DIRAC_RTP_PCODE_HQ_PIC_FRAGMENT, 16, buf, frag_len, interlaced, second_field, size > 0 ? 0 : 1) < 0)
++            return AVERROR_INVALIDDATA;
+         buf += frag_len;
+     }
+     return 0;
+diff --git a/libavformat/spdifenc.c b/libavformat/spdifenc.c
+index ab3f73d..16eebda 100644
+--- a/libavformat/spdifenc.c
++++ b/libavformat/spdifenc.c
+@@ -225,7 +225,7 @@ static int spdif_header_dts4(AVFormatContext *s, AVPacket *pkt, int core_size,
+              * (dtshd_fallback == 0) */
+             ctx->dtshd_skip = 1;
+     }
+-    if (ctx->dtshd_skip && core_size) {
++    if (ctx->dtshd_skip && core_size && core_size <= pkt->size) {
+         pkt_size = core_size;
+         if (ctx->dtshd_fallback >= 0)
+             --ctx->dtshd_skip;
+diff --git a/libavformat/ty.c b/libavformat/ty.c
+index 134f00d..5512e29 100644
+--- a/libavformat/ty.c
++++ b/libavformat/ty.c
+@@ -577,7 +577,7 @@ static int demux_audio(AVFormatContext *s, TyRecHdr *rec_hdr, AVPacket *pkt)
+         if (ty->audio_type == TIVO_AUDIO_AC3 &&
+                 ty->tivo_series == TIVO_SERIES2) {
+             if (ty->ac3_pkt_size + pkt->size > AC3_PKT_LENGTH) {
+-                pkt->size -= 2;
++                pkt->size -= FFMIN(pkt->size, 2);
+                 ty->ac3_pkt_size = 0;
+             } else {
+                 ty->ac3_pkt_size += pkt->size;
