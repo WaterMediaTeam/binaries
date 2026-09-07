@@ -32,10 +32,13 @@ $xmlSeries = ($xmlVersion -split '\.')[0..1] -join '.'
 $xmlUrl = "https://download.gnome.org/sources/libxml2/$xmlSeries/libxml2-$xmlVersion.tar.xz"
 $sslArchive = Join-Path $work "openssl-$sslVersion.tar.gz"
 $sslUrl = "https://github.com/openssl/openssl/releases/download/openssl-$sslVersion/openssl-$sslVersion.tar.gz"
+$x264Archive = Join-Path $work "x264-$x264.tar.gz"
+$x264Url = "https://github.com/mirror/x264/archive/$x264.tar.gz"
 foreach ($download in @(
     @{ Url = $sourceUrl; Path = $sourceArchive; Hash = $properties.ffmpeg_source_sha256 },
     @{ Url = $xmlUrl; Path = $xmlArchive; Hash = $properties.libxml2_sha256 },
-    @{ Url = $sslUrl; Path = $sslArchive; Hash = $properties.openssl_sha256 }
+    @{ Url = $sslUrl; Path = $sslArchive; Hash = $properties.openssl_sha256 },
+    @{ Url = $x264Url; Path = $x264Archive; Hash = $properties.ffmpeg_x264_sha256 }
 )) {
     if (!(Test-Path -LiteralPath $download.Path)) { Invoke-WebRequest -Uri $download.Url -OutFile $download.Path }
     if ((Get-FileHash -LiteralPath $download.Path -Algorithm SHA256).Hash -ine $download.Hash) {
@@ -75,7 +78,7 @@ $changes = @(
     @('XML2=libxml2-2.9.12', "XML2=libxml2-$xmlVersion"),
     @('OPENSSL=openssl-3.5.7', "OPENSSL=openssl-$sslVersion"),
     @('X264=x264-stable', "X264=x264-$x264"),
-    @('download https://code.videolan.org/videolan/x264/-/archive/stable/$X264.tar.gz $X264.tar.gz', "download https://code.videolan.org/videolan/x264/-/archive/$x264/`$X264.tar.gz `$X264.tar.gz"),
+    @('download https://code.videolan.org/videolan/x264/-/archive/stable/$X264.tar.gz $X264.tar.gz', "download https://github.com/mirror/x264/archive/$x264.tar.gz `$X264.tar.gz"),
     @('download http://xmlsoft.org/sources/$XML2.tar.gz $XML2.tar.gz', "download https://download.gnome.org/sources/libxml2/$xmlSeries/`$XML2.tar.xz `$XML2.tar.xz"),
     @('tar --totals -xzf ../$XML2.tar.gz', 'tar --totals -xJf ../$XML2.tar.xz'),
     @('--without-iconv --without-python --without-lzma --with-pic', '--without-iconv --with-pic'),
@@ -106,9 +109,11 @@ $cache = Join-Path $source 'downloads'
 [IO.Directory]::CreateDirectory($cache) | Out-Null
 Copy-Item -LiteralPath $xmlArchive -Destination (Join-Path $cache "libxml2-$xmlVersion.tar.xz") -Force
 Copy-Item -LiteralPath $sslArchive -Destination (Join-Path $cache "openssl-$sslVersion.tar.gz") -Force
+Copy-Item -LiteralPath $x264Archive -Destination (Join-Path $cache "x264-$x264.tar.gz") -Force
 Write-Output "Prepared $Platform sources: $source"
 Write-Output "Verified libxml2 $xmlVersion SHA-256: $($properties.libxml2_sha256)"
 Write-Output "Verified OpenSSL $sslVersion SHA-256: $($properties.openssl_sha256)"
+Write-Output "Verified x264 $x264 SHA-256: $($properties.ffmpeg_x264_sha256)"
 Write-Output "Verified TLS patch SHA-256: $($properties.ffmpeg_tls_patch_sha256)"
 Write-Output "Verified security patch SHA-256: $($properties.ffmpeg_security_patch_sha256)"
 if ($PrepareOnly) { return }

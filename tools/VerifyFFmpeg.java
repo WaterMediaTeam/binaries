@@ -1,6 +1,8 @@
 import org.bytedeco.ffmpeg.avformat.AVFormatContext;
+import org.bytedeco.ffmpeg.avformat.AVIOContext;
 import org.bytedeco.ffmpeg.avutil.AVDictionary;
 import org.bytedeco.ffmpeg.global.*;
+import org.bytedeco.javacpp.BytePointer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.zip.ZipFile;
@@ -55,21 +57,38 @@ public final class VerifyFFmpeg {
         }
         for (final int streams: new int[] { 1, 34, 35 }) {
             final var output = new AVFormatContext(null);
+            final var buffer = new AVIOContext(null);
             try {
                 if (avformat.avformat_alloc_output_context2(output, null, "mpeg", (String) null) < 0)
                     throw new IllegalStateException("MPEG program stream muxer is unavailable");
+                if (avformat.avio_open_dyn_buf(buffer) < 0)
+                    throw new IllegalStateException("Cannot allocate the MPEG fixture output");
+                output.pb(buffer);
                 for (int index = 0; index < streams; index++) {
                     final var stream = avformat.avformat_new_stream(output, null);
                     if (stream == null || stream.isNull()) throw new IllegalStateException("Cannot allocate the MPEG fixture stream");
                     stream.time_base().num(1).den(25);
-                    stream.codecpar().codec_type(avutil.AVMEDIA_TYPE_VIDEO).codec_id(avcodec.AV_CODEC_ID_MPEG2VIDEO)
-                            .width(16).height(16).bit_rate(64000);
+                    if (index < 16) {
+                        stream.codecpar().codec_type(avutil.AVMEDIA_TYPE_VIDEO).codec_id(avcodec.AV_CODEC_ID_MPEG2VIDEO)
+                                .width(16).height(16).bit_rate(64000);
+                    } else {
+                        stream.codecpar().codec_type(avutil.AVMEDIA_TYPE_AUDIO).codec_id(avcodec.AV_CODEC_ID_MP2)
+                                .sample_rate(44100).bit_rate(64000);
+                        avutil.av_channel_layout_default(stream.codecpar().ch_layout(), 2);
+                    }
                 }
-                // THE SYSTEM HEADER FITS 34 STREAMS; INITIALIZATION MUST REJECT THE NEXT BEFORE WRITING PACKETS.
-                final int result = avformat.avformat_init_output(output, (AVDictionary) null);
+                // MPEG INITIALIZES IN WRITE_HEADER; ITS SYSTEM HEADER FITS 34 STREAMS BEFORE WRITING PACKETS.
+                // MIX AUDIO AND VIDEO TO KEEP EACH STREAM ID WITHIN ITS MPEG RANGE.
+                final int result = avformat.avformat_write_header(output, (AVDictionary) null);
                 if ((result >= 0) != (streams <= 34))
                     throw new IllegalStateException("MPEG system-header bounds failed for " + streams + " streams: " + result);
             } finally {
+                if (!buffer.isNull()) {
+                    final var data = new BytePointer((org.bytedeco.javacpp.Pointer) null);
+                    avformat.avio_close_dyn_buf(buffer, data);
+                    avutil.av_free(data);
+                    output.pb(null);
+                }
                 avformat.avformat_free_context(output);
             }
         }

@@ -4,6 +4,8 @@ The Maven `8.1.2-1.5.14` GPL classifiers contain statically linked libxml2 2.9.1
 `RebuildFFmpeg.ps1` retains the FFmpeg/JavaCPP coordinate and prepares the tagged JavaCPP recipe with
 libxml2 2.15.4 and OpenSSL 3.5.8. The source commit, source archive hashes, x264 revision and native
 dependency versions are pinned in `gradle.properties`.
+The pinned x264 commit is fetched from its GitHub mirror with a required archive hash; its bytes match
+the source already used by the native builds.
 The checksum-pinned TLS patch enables certificate verification by default, verifies IP identities,
 and preserves trust options through HTTP, HLS and DASH, including manifests read from local files.
 The separate `ffmpeg-security.patch` backports the reviewed upstream fixes listed below while retaining
