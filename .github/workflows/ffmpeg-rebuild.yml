@@ -28,18 +28,9 @@ jobs:
       - name: Checkout native packaging sources
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
-      - name: Read Java version
-        id: versions
-        shell: pwsh
-        run: |
-          $javaVersion = ((Get-Content gradle.properties | Select-String '^java_test_version=').Line -split '=', 2)[1]
-          Add-Content $env:GITHUB_OUTPUT "java=$javaVersion"
-
       - name: Set up patched Java
-        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
-        with:
-          distribution: microsoft
-          java-version: ${{ steps.versions.outputs.java }}
+        shell: pwsh
+        run: ./tools/SetupJava.ps1 -Platform '${{ matrix.platform }}'
 
       - name: Install Linux build prerequisites
         if: runner.os == 'Linux'

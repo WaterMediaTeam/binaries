@@ -6,6 +6,7 @@ libxml2 2.15.4 and OpenSSL 3.5.8. The source commit, source archive hashes, x264
 dependency versions are pinned in `gradle.properties`.
 
 ```powershell
+./tools/SetupJava.ps1 -Platform windows-x86_64
 ./tools/SetupNativeTools.ps1 -Platform windows-x86_64
 ./tools/RebuildFFmpeg.ps1 -Platform windows-x86_64
 ```
@@ -14,6 +15,7 @@ The other platforms are `linux-x86_64`, `linux-arm64`, `macosx-x86_64` and `maco
 Use each platform's own OS and CPU. Windows requires an initialized MSYS2 MINGW64 environment with
 its `mingw64/bin` and `usr/bin` directories on PATH, plus `MSYSTEM=MINGW64` and
 `MSYS2_PATH_TYPE=inherit`. Linux and macOS prerequisites are listed in the `FFmpeg Rebuild` workflow.
+The exact Microsoft JDK is downloaded using a pinned SHA-256 and its installed version is checked.
 Maven and CMake are downloaded as verified archives into this project's `build/native-tools`.
 The build uses Meson and its runtime as upstream build dependencies; no system-wide tool installation
 is performed by these scripts.
