@@ -47,6 +47,9 @@ packages; dependencies outside the declared set are rejected.
 
 Candidate JARs and their provenance are placed under `build/rebuilt/<platform>`. The workflow uploads
 only successfully verified candidates and never creates branches, commits, releases or publications.
+Its platform selector can retry one failed target while the other builds continue. Failed jobs may
+upload separate `unverified-ffmpeg-*` diagnostics containing intermediate JARs, the CLI and build logs.
+These lack the successful verification record and must never replace the distributed libraries.
 All five candidates must pass before replacing the distributed native set. Updating a recipe does
 not change the currently bundled ZIPs by itself; the source manifest must match any replaced archives.
 

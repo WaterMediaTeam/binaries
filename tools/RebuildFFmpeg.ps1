@@ -64,6 +64,8 @@ try {
     try { $recipe = $reader.ReadToEnd() } finally { $reader.Dispose() }
     $reader = [IO.StreamReader]::new($zip.GetEntry("javacpp-presets-$revision/ffmpeg/pom.xml").Open())
     try { $pom = $reader.ReadToEnd() } finally { $reader.Dispose() }
+    $reader = [IO.StreamReader]::new($zip.GetEntry("javacpp-presets-$revision/pom.xml").Open())
+    try { $parentPom = $reader.ReadToEnd() } finally { $reader.Dispose() }
 } finally { $zip.Dispose() }
 $changes = @(
     @('XML2=libxml2-2.9.12', "XML2=libxml2-$xmlVersion"),
@@ -103,6 +105,12 @@ if (!$VerifyOnly) {
     foreach ($tool in @('bash', 'mvn', 'cmake', 'make', 'meson', 'ninja', 'pkg-config')) {
         if (!(Get-Command $tool -ErrorAction SilentlyContinue)) { throw "Missing native build prerequisite: $tool" }
     }
+    # WINDOWS CREATEPROCESS SEARCHES SYSTEM32 BEFORE PATH; USE THE CONFIGURED SHELL'S ABSOLUTE PATH.
+    $nativeBash = (Get-Command bash -CommandType Application -ErrorAction Stop).Source
+    if ($Platform.StartsWith('windows-') -and !(Test-Path -LiteralPath (Join-Path ([IO.Path]::GetDirectoryName($nativeBash)) 'msys-2.0.dll'))) { throw 'Native Windows builds require the MSYS2 bash executable on PATH' }
+    if (!$parentPom.Contains('<program>bash</program>')) { throw 'Unexpected JavaCPP shell configuration' }
+    $parentPom = $parentPom.Replace('<program>bash</program>', '<program>' + [Security.SecurityElement]::Escape($nativeBash.Replace('\', '/')) + '</program>')
+    [IO.File]::WriteAllText((Join-Path $source 'pom.xml'), $parentPom, [Text.UTF8Encoding]::new($false))
     $env:MAKEJ = [Math]::Max(1, [Environment]::ProcessorCount - 2)
     $env:MAVEN_OPTS = '-Xss2m -Xmx4g'
     $nativeOptions = @()
@@ -198,9 +206,9 @@ if ($Platform.StartsWith('macosx-')) {
         }
     } finally { $archive.Dispose() }
 }
-$env:PATH = (Join-Path $native 'bin') + [IO.Path]::PathSeparator + $env:PATH
-$env:LD_LIBRARY_PATH = (Join-Path $native 'lib') + ':' + $env:LD_LIBRARY_PATH
-$env:DYLD_LIBRARY_PATH = (Join-Path $native 'lib') + ':' + $env:DYLD_LIBRARY_PATH
+$env:PATH = $packaged + [IO.Path]::PathSeparator + (Join-Path $native 'bin') + [IO.Path]::PathSeparator + $env:PATH
+$env:LD_LIBRARY_PATH = $packaged + ':' + $env:LD_LIBRARY_PATH
+$env:DYLD_LIBRARY_PATH = $packaged + ':' + $env:DYLD_LIBRARY_PATH
 & $program -nostdin -v error -f lavfi -i 'color=c=black:s=32x32:r=1' -t 1 -c:v libx264 -an -f dash -y (Join-Path $smoke 'stream.mpd')
 if ($LASTEXITCODE -ne 0) { throw 'Rebuilt FFmpeg cannot produce the DASH regression fixture' }
 $javaVersion = $properties.ffmpeg_version.Split('-')[1]

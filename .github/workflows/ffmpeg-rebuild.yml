@@ -2,6 +2,18 @@ name: FFmpeg Rebuild
 
 on:
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Native platform to rebuild
+        type: choice
+        default: all
+        options:
+          - all
+          - linux-x86_64
+          - linux-arm64
+          - windows-x86_64
+          - macosx-x86_64
+          - macosx-arm64
 
 permissions:
   contents: read
@@ -11,18 +23,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - platform: linux-x86_64
-            runner: ubuntu-22.04
-          - platform: linux-arm64
-            runner: ubuntu-22.04-arm
-          - platform: windows-x86_64
-            runner: windows-2022
-          - platform: macosx-x86_64
-            runner: macos-15-intel
-          - platform: macosx-arm64
-            runner: macos-15
-    runs-on: ${{ matrix.runner }}
+        platform: ${{ fromJSON(inputs.platform == 'all' && '["linux-x86_64","linux-arm64","windows-x86_64","macosx-x86_64","macosx-arm64"]' || format('["{0}"]', inputs.platform)) }}
+    runs-on: ${{ matrix.platform == 'linux-x86_64' && 'ubuntu-22.04' || matrix.platform == 'linux-arm64' && 'ubuntu-22.04-arm' || matrix.platform == 'windows-x86_64' && 'windows-2022' || matrix.platform == 'macosx-x86_64' && 'macos-15-intel' || 'macos-15' }}
     timeout-minutes: 360
     steps:
       - name: Checkout native packaging sources
@@ -78,4 +80,21 @@ jobs:
           name: ffmpeg-${{ matrix.platform }}
           path: build/rebuilt/${{ matrix.platform }}
           if-no-files-found: error
+          compression-level: 0
+
+      - name: Preserve unverified build diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: unverified-ffmpeg-${{ matrix.platform }}
+          path: |
+            build/native-rebuild/src/*/ffmpeg/target/ffmpeg-*-gpl.jar
+            build/native-rebuild/src/*/ffmpeg/cppbuild/*-gpl/bin/ffmpeg*
+            build/native-rebuild/src/*/ffmpeg/cppbuild/*-gpl/ffmpeg-*/ffbuild/config.log
+            build/native-rebuild/src/*/ffmpeg/cppbuild/*-gpl/libxml2-*/config.log
+            build/native-rebuild/src/*/ffmpeg/cppbuild.sh
+            build/native-rebuild/src/*/pom.xml
+            build/native-rebuild/smoke-*/*.mpd
+            build/native-rebuild/smoke-*/*.m4s
+          if-no-files-found: ignore
           compression-level: 0
