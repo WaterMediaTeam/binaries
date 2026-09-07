@@ -80,14 +80,17 @@ $changes = @(
     @('echo "pkg-config=', 'echo "pkgconfig='),
     @('--pkg-config-path=/usr/bin/pkg-config', '--pkg-config-path=$INSTALL_PATH/lib/pkgconfig'),
     @('echo "[binaries]" >>', 'echo "[binaries]" >'),
+    @('--disable-xlib"', '--disable-xlib --disable-vdpau"'),
     @('-lWs2_32 -lcrypt32 -lpthread', '-lWs2_32 -lcrypt32 -lbcrypt -lpthread'),
-    @('patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg.patch', 'patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg.patch' + "`n" + 'patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg-tls.patch')
+    @('patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg.patch', ('patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg.patch' + "`n" + 'patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg-tls.patch'))
 )
 foreach ($change in $changes) {
+    if ($change.Count -ne 2) { throw 'Each native recipe replacement must contain exactly two strings' }
     if (!$recipe.Contains($change[0])) { throw "Expected upstream recipe fragment is missing: $($change[0])" }
     $recipe = $recipe.Replace($change[0], $change[1])
 }
 if (!$recipe.Contains("FFMPEG_VERSION=$($properties.ffmpeg_version.Split('-')[0])")) { throw 'Source FFmpeg version disagrees with the Java wrappers' }
+if ([regex]::Matches($recipe, [regex]::Escape('patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg-tls.patch')).Count -ne 1) { throw 'The native recipe must apply the TLS patch exactly once' }
 Copy-Item -LiteralPath $tlsPatch -Destination (Join-Path $source 'ffmpeg/ffmpeg-tls.patch') -Force
 [IO.File]::WriteAllText((Join-Path $source 'ffmpeg/cppbuild.sh'), $recipe, [Text.UTF8Encoding]::new($false))
 $upstreamVersion = '<version>' + $properties.ffmpeg_version.Split('-')[0] + '-${project.parent.version}</version>'
@@ -111,7 +114,7 @@ if (!$VerifyOnly) {
     if (!$ffmpegSource.StartsWith($nativePrefix, [StringComparison]::OrdinalIgnoreCase)) { throw 'FFmpeg source cleanup escaped its build directory' }
     # TAR OVERLAYS DO NOT REMOVE FILES ADDED BY PATCHES; RESET ONLY THE GENERATED FFMPEG SOURCE TREE.
     if (Test-Path -LiteralPath $ffmpegSource) { Remove-Item -LiteralPath $ffmpegSource -Recurse -Force }
-    foreach ($tool in @('bash', 'mvn', 'cmake', 'make', 'meson', 'ninja', 'pkg-config')) {
+    foreach ($tool in @('bash', 'mvn', 'cmake', 'make', 'meson', 'ninja', 'pkg-config', 'git')) {
         if (!(Get-Command $tool -ErrorAction SilentlyContinue)) { throw "Missing native build prerequisite: $tool" }
     }
     # WINDOWS CREATEPROCESS SEARCHES SYSTEM32 BEFORE PATH; USE THE CONFIGURED SHELL'S ABSOLUTE PATH.
@@ -144,6 +147,11 @@ if (!$VerifyOnly) {
         if ($LASTEXITCODE -ne 0) { throw "FFmpeg native compilation failed for $Platform" }
     } finally { Pop-Location }
 }
+$ffmpegSource = [IO.Path]::GetFullPath((Join-Path $source "ffmpeg/cppbuild/$Platform-gpl/ffmpeg-$($properties.ffmpeg_version.Split('-')[0])"))
+$patchDirectory = [IO.Path]::GetRelativePath($root, $ffmpegSource).Replace('\', '/')
+if ($patchDirectory.StartsWith('../', [StringComparison]::Ordinal)) { throw 'Native TLS verification escaped its build directory' }
+& git -C $root apply --reverse --check "--directory=$patchDirectory" $tlsPatch
+if ($LASTEXITCODE -ne 0) { throw 'Compiled FFmpeg sources do not contain the complete reviewed TLS patch' }
 $classifier = "ffmpeg-$($properties.ffmpeg_version)-$Platform-gpl.jar"
 $jar = Join-Path $source "ffmpeg/target/ffmpeg-$Platform-gpl.jar"
 if (!(Test-Path -LiteralPath $jar)) { throw "Native build did not produce its classifier archive: $jar" }

@@ -25,6 +25,7 @@ is performed by these scripts.
 `-PrepareOnly` downloads and verifies source archives and patches the pristine recipe without
 running a native compiler. `-VerifyOnly` validates an already built classifier without recompiling.
 The build preserves the upstream codec and hardware configuration, and adds no DASH format restriction.
+VDPAU remains disabled as in the original Linux classifiers, keeping their existing system-library contract.
 
 Maven runs the complete JavaCPP preset in three phases: compile and install FFmpeg with its static
 codec dependencies, parse its headers, then compile all seven JNI libraries with `copyLibs` and
@@ -44,6 +45,7 @@ A second fresh Java process runs `VerifyTLS.java` against local HTTPS fixtures. 
 and nested HLS/DASH reads must work; untrusted certificates and incorrect endpoint identities must
 be rejected before any HTTP request reaches the rejected peer. Candidates are exported only after
 both probes pass, and their records include the exact TLS patch hash.
+The build also checks that every reviewed TLS hunk is present in the actual FFmpeg source tree.
 Local manifest fixtures explicitly allow network protocols for these checks; production protocol
 restrictions remain unchanged. Proxy settings are removed from the loopback verification processes.
 

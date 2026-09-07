@@ -38,7 +38,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential autoconf autoconf-archive automake libtool pkg-config nasm ninja-build meson ragel unzip zip xz-utils libva-dev libdrm-dev libasound2-dev libpulse-dev libxcb1-dev libvdpau-dev libvulkan-dev libx11-dev
+          sudo apt-get install -y build-essential autoconf autoconf-archive automake libtool pkg-config nasm ninja-build meson ragel unzip zip xz-utils libva-dev libdrm-dev libasound2-dev libpulse-dev libxcb1-dev libvulkan-dev libx11-dev
 
       - name: Install macOS build prerequisites
         if: runner.os == 'macOS'
