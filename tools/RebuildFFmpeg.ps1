@@ -16,6 +16,8 @@ $revision = $properties.ffmpeg_source_ref
 $xmlVersion = $properties.libxml2_version
 $sslVersion = $properties.openssl_version
 $x264 = $properties.ffmpeg_x264_ref
+$tlsPatch = Join-Path $PSScriptRoot 'ffmpeg-tls.patch'
+if ($properties.ffmpeg_tls_patch_sha256 -notmatch '^[a-f0-9]{64}$' -or (Get-FileHash -LiteralPath $tlsPatch -Algorithm SHA256).Hash -ine $properties.ffmpeg_tls_patch_sha256) { throw 'Native TLS patch SHA-256 mismatch' }
 if ($revision -notmatch '^[a-f0-9]{40}$' -or $x264 -notmatch '^[a-f0-9]{40}$' -or $xmlVersion -notmatch '^\d+\.\d+\.\d+$' -or $sslVersion -notmatch '^\d+\.\d+\.\d+$') {
     throw 'Native source revisions and libxml2 version must be pinned in gradle.properties'
 }
@@ -74,13 +76,19 @@ $changes = @(
     @('download https://code.videolan.org/videolan/x264/-/archive/stable/$X264.tar.gz $X264.tar.gz', "download https://code.videolan.org/videolan/x264/-/archive/$x264/`$X264.tar.gz `$X264.tar.gz"),
     @('download http://xmlsoft.org/sources/$XML2.tar.gz $XML2.tar.gz', "download https://download.gnome.org/sources/libxml2/$xmlSeries/`$XML2.tar.xz `$XML2.tar.xz"),
     @('tar --totals -xzf ../$XML2.tar.gz', 'tar --totals -xJf ../$XML2.tar.xz'),
-    @('--without-iconv --without-python --without-lzma --with-pic', '--without-iconv --with-pic')
+    @('--without-iconv --without-python --without-lzma --with-pic', '--without-iconv --with-pic'),
+    @('echo "pkg-config=', 'echo "pkgconfig='),
+    @('--pkg-config-path=/usr/bin/pkg-config', '--pkg-config-path=$INSTALL_PATH/lib/pkgconfig'),
+    @('echo "[binaries]" >>', 'echo "[binaries]" >'),
+    @('-lWs2_32 -lcrypt32 -lpthread', '-lWs2_32 -lcrypt32 -lbcrypt -lpthread'),
+    @('patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg.patch', 'patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg.patch' + "`n" + 'patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg-tls.patch')
 )
 foreach ($change in $changes) {
     if (!$recipe.Contains($change[0])) { throw "Expected upstream recipe fragment is missing: $($change[0])" }
     $recipe = $recipe.Replace($change[0], $change[1])
 }
 if (!$recipe.Contains("FFMPEG_VERSION=$($properties.ffmpeg_version.Split('-')[0])")) { throw 'Source FFmpeg version disagrees with the Java wrappers' }
+Copy-Item -LiteralPath $tlsPatch -Destination (Join-Path $source 'ffmpeg/ffmpeg-tls.patch') -Force
 [IO.File]::WriteAllText((Join-Path $source 'ffmpeg/cppbuild.sh'), $recipe, [Text.UTF8Encoding]::new($false))
 $upstreamVersion = '<version>' + $properties.ffmpeg_version.Split('-')[0] + '-${project.parent.version}</version>'
 if (!$pom.Contains($upstreamVersion)) { throw 'Unexpected FFmpeg Maven version expression' }
@@ -93,6 +101,7 @@ Copy-Item -LiteralPath $sslArchive -Destination (Join-Path $cache "openssl-$sslV
 Write-Output "Prepared $Platform sources: $source"
 Write-Output "Verified libxml2 $xmlVersion SHA-256: $($properties.libxml2_sha256)"
 Write-Output "Verified OpenSSL $sslVersion SHA-256: $($properties.openssl_sha256)"
+Write-Output "Verified TLS patch SHA-256: $($properties.ffmpeg_tls_patch_sha256)"
 if ($PrepareOnly) { return }
 
 if (!$VerifyOnly) {
@@ -106,8 +115,16 @@ if (!$VerifyOnly) {
         if (!(Get-Command $tool -ErrorAction SilentlyContinue)) { throw "Missing native build prerequisite: $tool" }
     }
     # WINDOWS CREATEPROCESS SEARCHES SYSTEM32 BEFORE PATH; USE THE CONFIGURED SHELL'S ABSOLUTE PATH.
-    $nativeBash = (Get-Command bash -CommandType Application -ErrorAction Stop).Source
-    if ($Platform.StartsWith('windows-') -and !(Test-Path -LiteralPath (Join-Path ([IO.Path]::GetDirectoryName($nativeBash)) 'msys-2.0.dll'))) { throw 'Native Windows builds require the MSYS2 bash executable on PATH' }
+    $shells = @(Get-Command bash -All -CommandType Application -ErrorAction Stop)
+    if ($Platform.StartsWith('windows-')) {
+        $shells = @($shells | Where-Object {
+            $directory = [IO.Path]::GetDirectoryName($_.Source)
+            (Test-Path -LiteralPath (Join-Path $directory 'msys-2.0.dll')) -and (Test-Path -LiteralPath (Join-Path $directory 'pacman.exe'))
+        })
+    }
+    if ($shells.Count -eq 0) { throw 'Native Windows builds require the MSYS2 usr/bin directory, including bash, pacman and its runtime, on PATH' }
+    $nativeBash = $shells[0].Source
+    Write-Output "Native build shell: $nativeBash"
     if (!$parentPom.Contains('<program>bash</program>')) { throw 'Unexpected JavaCPP shell configuration' }
     $parentPom = $parentPom.Replace('<program>bash</program>', '<program>' + [Security.SecurityElement]::Escape($nativeBash.Replace('\', '/')) + '</program>')
     [IO.File]::WriteAllText((Join-Path $source 'pom.xml'), $parentPom, [Text.UTF8Encoding]::new($false))
@@ -128,8 +145,8 @@ if (!$VerifyOnly) {
     } finally { Pop-Location }
 }
 $classifier = "ffmpeg-$($properties.ffmpeg_version)-$Platform-gpl.jar"
-$jar = Join-Path $source "ffmpeg/target/$classifier"
-if (!(Test-Path -LiteralPath $jar)) { throw "Native build did not produce $classifier" }
+$jar = Join-Path $source "ffmpeg/target/ffmpeg-$Platform-gpl.jar"
+if (!(Test-Path -LiteralPath $jar)) { throw "Native build did not produce its classifier archive: $jar" }
 $native = Join-Path $source "ffmpeg/cppbuild/$Platform-gpl"
 $suffix = if ($Platform.StartsWith('windows-')) { '.exe' } else { '' }
 $program = Join-Path $native "bin/ffmpeg$suffix"
@@ -209,8 +226,11 @@ if ($Platform.StartsWith('macosx-')) {
 $env:PATH = $packaged + [IO.Path]::PathSeparator + (Join-Path $native 'bin') + [IO.Path]::PathSeparator + $env:PATH
 $env:LD_LIBRARY_PATH = $packaged + ':' + $env:LD_LIBRARY_PATH
 $env:DYLD_LIBRARY_PATH = $packaged + ':' + $env:DYLD_LIBRARY_PATH
-& $program -nostdin -v error -f lavfi -i 'color=c=black:s=32x32:r=1' -t 1 -c:v libx264 -an -f dash -y (Join-Path $smoke 'stream.mpd')
-if ($LASTEXITCODE -ne 0) { throw 'Rebuilt FFmpeg cannot produce the DASH regression fixture' }
+Push-Location $smoke
+try {
+    & $program -nostdin -v error -f lavfi -i 'color=c=black:s=32x32:r=1' -t 1 -c:v libx264 -an -f dash -y 'stream.mpd'
+    if ($LASTEXITCODE -ne 0) { throw 'Rebuilt FFmpeg cannot produce the DASH regression fixture' }
+} finally { Pop-Location }
 $javaVersion = $properties.ffmpeg_version.Split('-')[1]
 $wrapper = Join-Path $work "ffmpeg-$($properties.ffmpeg_version).jar"
 if (!(Test-Path -LiteralPath $wrapper)) {
@@ -228,27 +248,35 @@ $start.UseShellExecute = $false
 $start.CreateNoWindow = $true
 $start.RedirectStandardOutput = $true
 $start.RedirectStandardError = $true
-$arguments = @('--enable-native-access=ALL-UNNAMED', "-Dorg.bytedeco.javacpp.platform.preloadpath=$packaged", '-Dorg.bytedeco.javacpp.pathsFirst=true', "-Djava.library.path=$packaged", '-cp', $classpath,
-    (Join-Path $PSScriptRoot 'VerifyFFmpeg.java'), $properties.ffmpeg_version.Split('-')[0], $xmlVersion, $sslVersion, $jar, (Join-Path $smoke 'stream.mpd'))
-foreach ($argument in $arguments) { $start.ArgumentList.Add($argument) }
+$arguments = @('--enable-native-access=ALL-UNNAMED', "-Dorg.bytedeco.javacpp.platform.preloadpath=$packaged", '-Dorg.bytedeco.javacpp.pathsFirst=true', "-Dorg.bytedeco.javacpp.cachedir=$packaged/cache", "-Djava.library.path=$packaged", '-cp', $classpath)
 $start.Environment['PATH'] = if ($Platform.StartsWith('windows-')) { "$env:JAVA_HOME/bin;$env:SystemRoot/System32;$env:SystemRoot" } else { "$env:JAVA_HOME/bin:/usr/bin:/bin" }
 $start.Environment['LD_LIBRARY_PATH'] = $packaged
 $start.Environment['DYLD_LIBRARY_PATH'] = $packaged
 $start.Environment['DYLD_FALLBACK_LIBRARY_PATH'] = $packaged
 foreach ($name in @('JAVA_TOOL_OPTIONS', '_JAVA_OPTIONS', 'JDK_JAVA_OPTIONS', 'CLASSPATH')) { [void]$start.Environment.Remove($name) }
-$process = [Diagnostics.Process]::Start($start)
-try {
-    $stdout = $process.StandardOutput.ReadToEndAsync()
-    $stderr = $process.StandardError.ReadToEndAsync()
-    if (!$process.WaitForExit(180000)) {
-        $process.Kill($true)
-        throw 'Native smoke-test deadline exceeded'
+foreach ($name in @('HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'https_proxy', 'all_proxy')) { [void]$start.Environment.Remove($name) }
+$start.Environment['NO_PROXY'] = '*'
+$start.Environment['no_proxy'] = '*'
+foreach ($probe in @(
+    @{ File = 'VerifyFFmpeg.java'; Arguments = @($properties.ffmpeg_version.Split('-')[0], $xmlVersion, $sslVersion, $jar, (Join-Path $smoke 'stream.mpd')) },
+    @{ File = 'VerifyTLS.java'; Arguments = @((Join-Path $smoke 'stream.mpd')) }
+)) {
+    $start.ArgumentList.Clear()
+    foreach ($argument in $arguments + (Join-Path $PSScriptRoot $probe.File) + $probe.Arguments) { $start.ArgumentList.Add($argument) }
+    $process = [Diagnostics.Process]::Start($start)
+    try {
+        $stdout = $process.StandardOutput.ReadToEndAsync()
+        $stderr = $process.StandardError.ReadToEndAsync()
+        if (!$process.WaitForExit(180000)) {
+            $process.Kill($true)
+            throw "Native verification deadline exceeded: $($probe.File)"
+        }
+        Write-Output $stdout.GetAwaiter().GetResult()
+        Write-Output $stderr.GetAwaiter().GetResult()
+        if ($process.ExitCode -ne 0) { throw "Native verification failed in the clean environment: $($probe.File)" }
+    } finally {
+        $process.Dispose()
     }
-    Write-Output $stdout.GetAwaiter().GetResult()
-    Write-Output $stderr.GetAwaiter().GetResult()
-    if ($process.ExitCode -ne 0) { throw 'Rebuilt FFmpeg failed native integrity, dependency closure or DASH verification in the clean environment' }
-} finally {
-    $process.Dispose()
 }
 $output = Join-Path $root "build/rebuilt/$Platform"
 [IO.Directory]::CreateDirectory($output) | Out-Null
@@ -262,12 +290,13 @@ $lines = @(
     "libxml2.sha256=$($properties.libxml2_sha256)",
     "openssl.version=$sslVersion",
     "openssl.sha256=$($properties.openssl_sha256)",
+    "tls.patch.sha256=$($properties.ffmpeg_tls_patch_sha256)",
     "recipe.sha256=$((Get-FileHash -LiteralPath (Join-Path $source 'ffmpeg/cppbuild.sh') -Algorithm SHA256).Hash.ToLowerInvariant())",
-    'verification=JNI-original-wrappers,DASH,recursive-entities,libxml2-version,openssl-version,imports-closure,clean-environment',
+    'verification=JNI-original-wrappers,DASH,recursive-entities,libxml2-version,openssl-version,imports-closure,clean-environment,TLS',
     "archive=$classifier",
     "archive.sha256=$((Get-FileHash -LiteralPath $jar -Algorithm SHA256).Hash.ToLowerInvariant())"
 )
 [IO.File]::WriteAllLines((Join-Path $output 'build.properties'), $lines, [Text.UTF8Encoding]::new($false))
 [IO.File]::WriteAllLines((Join-Path $output 'dependencies.txt'), $imports, [Text.UTF8Encoding]::new($false))
 Write-Output "Candidate native archive: $output"
-Write-Output 'Native load and DASH checks passed; review all five classifier results before publishing.'
+Write-Output 'Native load, DASH and TLS checks passed; review all five classifier results before publishing.'

@@ -34,7 +34,7 @@ public final class VerifyFFmpeg {
         }
         final var format = new AVFormatContext(null);
         try {
-            if (avformat.avformat_open_input(format, Path.of(args[4]).toAbsolutePath().toString(), null, null) < 0
+            if (avformat.avformat_open_input(format, Path.of(args[4]).toAbsolutePath().toString().replace('\\', '/'), null, null) < 0
                     || avformat.avformat_find_stream_info(format, (org.bytedeco.javacpp.PointerPointer) null) < 0 || format.nb_streams() < 1) {
                 throw new IllegalStateException("Rebuilt FFmpeg failed the local DASH playback probe");
             }
@@ -46,7 +46,7 @@ public final class VerifyFFmpeg {
         final var invalid = new AVFormatContext(null);
         try {
             // SELECT DASH EXPLICITLY SO MALFORMED XML REACHES ITS PARSER EVEN WHEN PROBING RULES CHANGE.
-            if (avformat.avformat_open_input(invalid, entities.toString(), avformat.av_find_input_format("dash"), null) >= 0) {
+            if (avformat.avformat_open_input(invalid, entities.toString().replace('\\', '/'), avformat.av_find_input_format("dash"), null) >= 0) {
                 throw new IllegalStateException("Invalid recursive-entity manifest was accepted");
             }
         } finally {

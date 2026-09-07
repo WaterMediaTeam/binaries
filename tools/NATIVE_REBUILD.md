@@ -4,6 +4,8 @@ The Maven `8.1.2-1.5.14` GPL classifiers contain statically linked libxml2 2.9.1
 `RebuildFFmpeg.ps1` retains the FFmpeg/JavaCPP coordinate and prepares the tagged JavaCPP recipe with
 libxml2 2.15.4 and OpenSSL 3.5.8. The source commit, source archive hashes, x264 revision and native
 dependency versions are pinned in `gradle.properties`.
+The checksum-pinned TLS patch enables certificate verification by default, verifies IP identities,
+and preserves trust options through HTTP, HLS and DASH, including manifests read from local files.
 
 ```powershell
 ./tools/SetupJava.ps1 -Platform windows-x86_64
@@ -38,6 +40,12 @@ directory, JDK and operating-system paths; compiler directories and inherited Ja
 PE, ELF or Mach-O imports must resolve to packaged libraries or the explicit operating-system allowlist.
 macOS library references are rewritten to `@loader_path`, signed again and saved into the candidate JAR.
 These checks are regression probes, not proof of exhaustive vulnerability coverage.
+A second fresh Java process runs `VerifyTLS.java` against local HTTPS fixtures. Trusted DNS/IP peers
+and nested HLS/DASH reads must work; untrusted certificates and incorrect endpoint identities must
+be rejected before any HTTP request reaches the rejected peer. Candidates are exported only after
+both probes pass, and their records include the exact TLS patch hash.
+Local manifest fixtures explicitly allow network protocols for these checks; production protocol
+restrictions remain unchanged. Proxy settings are removed from the loopback verification processes.
 
 The Linux runtime contract matches the original classifiers: glibc and C/C++ runtimes, udev,
 PulseAudio, XCB, ALSA, VA-API and DRM may come from the operating system. Some are already packaged by

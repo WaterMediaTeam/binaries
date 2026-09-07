@@ -79,7 +79,8 @@ public final class RepackFFmpeg {
         if (rebuilt != null) {
             manifest.append("source.ref=").append(properties.getProperty("ffmpeg_source_ref")).append('\n')
                     .append("libxml2.version=").append(properties.getProperty("libxml2_version")).append('\n')
-                    .append("openssl.version=").append(properties.getProperty("openssl_version")).append('\n');
+                    .append("openssl.version=").append(properties.getProperty("openssl_version")).append('\n')
+                    .append("tls.patch.sha256=").append(properties.getProperty("ffmpeg_tls_patch_sha256")).append('\n');
         }
 
         for (final var platform: platforms.entrySet()) {
@@ -120,7 +121,9 @@ public final class RepackFFmpeg {
                         || !properties.getProperty("libxml2_sha256").equalsIgnoreCase(record.getProperty("libxml2.sha256", ""))
                         || !properties.getProperty("openssl_version").equals(record.getProperty("openssl.version"))
                         || !properties.getProperty("openssl_sha256").equalsIgnoreCase(record.getProperty("openssl.sha256", ""))
-                        || !"JNI-original-wrappers,DASH,recursive-entities,libxml2-version,openssl-version,imports-closure,clean-environment".equals(record.getProperty("verification"))) {
+                        || !properties.getProperty("ffmpeg_tls_patch_sha256", "").matches("[a-fA-F0-9]{64}")
+                        || !properties.getProperty("ffmpeg_tls_patch_sha256").equalsIgnoreCase(record.getProperty("tls.patch.sha256", ""))
+                        || !"JNI-original-wrappers,DASH,recursive-entities,libxml2-version,openssl-version,imports-closure,clean-environment,TLS".equals(record.getProperty("verification"))) {
                     throw new IOException("Candidate version or native verification record does not match: " + candidate);
                 }
                 source = candidate.resolve(name);
