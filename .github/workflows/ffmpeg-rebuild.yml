@@ -1,0 +1,90 @@
+name: FFmpeg Rebuild
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x86_64
+            runner: ubuntu-22.04
+          - platform: linux-arm64
+            runner: ubuntu-22.04-arm
+          - platform: windows-x86_64
+            runner: windows-2022
+          - platform: macosx-x86_64
+            runner: macos-15-intel
+          - platform: macosx-arm64
+            runner: macos-15
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 360
+    steps:
+      - name: Checkout native packaging sources
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Read Java version
+        id: versions
+        shell: pwsh
+        run: |
+          $javaVersion = ((Get-Content gradle.properties | Select-String '^java_test_version=').Line -split '=', 2)[1]
+          Add-Content $env:GITHUB_OUTPUT "java=$javaVersion"
+
+      - name: Set up patched Java
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: microsoft
+          java-version: ${{ steps.versions.outputs.java }}
+
+      - name: Install Linux build prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential autoconf autoconf-archive automake libtool pkg-config nasm ninja-build meson ragel unzip zip xz-utils libva-dev libdrm-dev libasound2-dev libpulse-dev libxcb1-dev libvdpau-dev libvulkan-dev libx11-dev
+
+      - name: Install macOS build prerequisites
+        if: runner.os == 'macOS'
+        run: |
+          brew install autoconf autoconf-archive automake libtool pkgconf nasm ninja meson ragel gcc@13 vulkan-headers vulkan-loader
+          echo "GCC_LIBRARY_PATH=$(brew --prefix gcc@13)/lib/gcc/13" >> "$GITHUB_ENV"
+          echo "LIBRARY_PATH=$(brew --prefix gcc@13)/lib/gcc/13" >> "$GITHUB_ENV"
+          echo "DYLD_LIBRARY_PATH=$(brew --prefix gcc@13)/lib/gcc/13" >> "$GITHUB_ENV"
+
+      - name: Install Windows build prerequisites
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          & C:/msys64/usr/bin/bash.exe -lc 'pacman -Syu --noconfirm'
+          & C:/msys64/usr/bin/bash.exe -lc 'pacman -Syu --noconfirm'
+          & C:/msys64/usr/bin/bash.exe -lc 'pacman -S --needed --noconfirm base-devel git unzip zip autoconf autoconf-archive automake libtool make patch diffutils mingw-w64-x86_64-gcc mingw-w64-x86_64-ninja mingw-w64-x86_64-pkgconf mingw-w64-x86_64-libtool mingw-w64-x86_64-meson mingw-w64-x86_64-nasm mingw-w64-x86_64-vulkan-headers mingw-w64-x86_64-vulkan-loader mingw-w64-x86_64-SDL2 mingw-w64-x86_64-ragel'
+          if ($LASTEXITCODE -ne 0) { throw 'MSYS2 prerequisites failed' }
+          Add-Content $env:GITHUB_PATH 'C:/msys64/usr/bin'
+          Add-Content $env:GITHUB_PATH 'C:/msys64/mingw64/bin'
+          Add-Content $env:GITHUB_ENV 'MSYSTEM=MINGW64'
+          Add-Content $env:GITHUB_ENV 'MSYS2_PATH_TYPE=inherit'
+
+      - name: Install verified Maven and CMake
+        shell: pwsh
+        run: ./tools/SetupNativeTools.ps1 -Platform '${{ matrix.platform }}'
+
+      - name: Prepare Linux native dependencies
+        if: runner.os == 'Linux'
+        shell: pwsh
+        run: ./tools/SetupLinuxNative.ps1 -Platform '${{ matrix.platform }}'
+
+      - name: Rebuild and verify native classifier
+        shell: pwsh
+        run: ./tools/RebuildFFmpeg.ps1 -Platform '${{ matrix.platform }}'
+
+      - name: Upload verified candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ffmpeg-${{ matrix.platform }}
+          path: build/rebuilt/${{ matrix.platform }}
+          if-no-files-found: error
+          compression-level: 0
