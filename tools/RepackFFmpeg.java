@@ -90,7 +90,8 @@ public final class RepackFFmpeg {
                     .append("openssl.version=").append(properties.getProperty("openssl_version")).append('\n')
                     .append("openssl.sha256=").append(properties.getProperty("openssl_sha256")).append('\n')
                     .append("tls.patch.sha256=").append(properties.getProperty("ffmpeg_tls_patch_sha256")).append('\n')
-                    .append("security.patch.sha256=").append(properties.getProperty("ffmpeg_security_patch_sha256")).append('\n');
+                    .append("security.patch.sha256=").append(properties.getProperty("ffmpeg_security_patch_sha256")).append('\n')
+                    .append("headers.patch.sha256=").append(properties.getProperty("ffmpeg_headers_patch_sha256")).append('\n');
         }
 
         for (final var platform: platforms.entrySet()) {
@@ -136,7 +137,9 @@ public final class RepackFFmpeg {
                         || !properties.getProperty("ffmpeg_tls_patch_sha256").equalsIgnoreCase(record.getProperty("tls.patch.sha256", ""))
                         || !properties.getProperty("ffmpeg_security_patch_sha256", "").matches("[a-fA-F0-9]{64}")
                         || !properties.getProperty("ffmpeg_security_patch_sha256").equalsIgnoreCase(record.getProperty("security.patch.sha256", ""))
-                        || !"JNI-original-wrappers,DASH,recursive-entities,libxml2-version,openssl-version,imports-closure,clean-environment,TLS".equals(record.getProperty("verification"))) {
+                        || !properties.getProperty("ffmpeg_headers_patch_sha256", "").matches("[a-fA-F0-9]{64}")
+                        || !properties.getProperty("ffmpeg_headers_patch_sha256").equalsIgnoreCase(record.getProperty("headers.patch.sha256", ""))
+                        || !"JNI-original-wrappers,DASH,recursive-entities,libxml2-version,openssl-version,imports-closure,clean-environment,TLS,HTTP-headers".equals(record.getProperty("verification"))) {
                     throw new IOException("Candidate version or native verification record does not match: " + candidate);
                 }
                 source = candidate.resolve(name);

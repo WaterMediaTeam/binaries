@@ -1,6 +1,7 @@
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import com.sun.net.httpserver.HttpsConfigurator;
+import com.sun.net.httpserver.HttpsExchange;
 import com.sun.net.httpserver.HttpsServer;
 import org.bytedeco.ffmpeg.avcodec.AVPacket;
 import org.bytedeco.ffmpeg.avformat.AVFormatContext;
@@ -19,6 +20,7 @@ import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509TrustManager;
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
@@ -28,16 +30,25 @@ import java.security.KeyStore;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /** Checks certificate trust and endpoint identity through real native HTTPS, HLS and DASH reads. */
 public final class VerifyTLS {
     private static final char[] PASSWORD = "watermedia-test-only".toCharArray();
+    private static final String VALUE = "wm=fixture";
+    private static final List<String> CREDENTIALS = List.of("Authorization", "Proxy-Authorization", "Cookie", "Cookie2", "X-WaterMedia-Token");
+    private static final ConcurrentLinkedQueue<HeaderHit> HEADER_HITS = new ConcurrentLinkedQueue<>();
+
+    private record HeaderHit(String url, Map<String, List<String>> credentials, String ordinary) {}
+    private record HeaderCheck(String raw, String cookies, boolean rawCredentials, Map<String, Boolean> expected) {}
 
     public static void main(final String[] args) throws Exception {
         if (args.length != 1) throw new IllegalArgumentException("Expected the generated single-stream DASH manifest");
@@ -140,9 +151,72 @@ public final class VerifyTLS {
                 expect("HTTP playlist rejects untrusted HTTPS media", base + "/unknown.m3u8", "hls", roots, false, unknown);
                 expect("HTTP DASH retains HTTPS trust", base + "/good.mpd", "dash", roots, true, null);
                 expect("HTTP DASH rejects untrusted HTTPS media", base + "/unknown.mpd", "dash", roots, false, unknown);
+                verifyHeaders(goodKeys, files, good, base, roots, mpd, period, init, segment);
             } finally { plain.stop(0); }
         }
-        System.out.println("TLS_VERIFIED HTTPS,HLS,DASH,private-CA,DNS,IP,redirects,Unicode-CA,default-verify,local-manifests");
+        System.out.println("TLS_VERIFIED HTTPS,HLS,DASH,private-CA,DNS,IP,redirects,Unicode-CA,default-verify,local-manifests,HTTP-headers");
+    }
+
+    private static void verifyHeaders(final KeyStore keys, final Map<String, byte[]> files, final Endpoint good,
+                                      final String plain, final Path roots, final String mpd, final int period,
+                                      final String init, final String segment) throws Exception {
+        try (final Endpoint other = new Endpoint(keys, files)) {
+            final String origin = good.dns();
+            final String ordinary = "Host: " + URI.create(origin).getRawAuthority() + "\r\nX-Test: preserved\r\n";
+            final var raw = new StringBuilder(ordinary);
+            for (final String field: CREDENTIALS) raw.append(field).append(": ").append(VALUE).append("\r\n");
+            final String[] names = { "same-origin", "cross-host", "cross-port", "downgrade" };
+            final String[] targets = { origin, good.ip(), other.dns(), plain };
+            for (int i = 0; i < targets.length; i++) {
+                final String target = targets[i];
+                final boolean same = i == 0;
+                for (final boolean rawCredentials: new boolean[] { true, false }) {
+                    final String prefix = "/headers-" + i + (rawCredentials ? "-raw" : "-cookies");
+                    final String headers = rawCredentials ? raw.toString() : ordinary;
+                    final String cookies = rawCredentials ? null : VALUE + "; path=/";
+                    final String redirect = origin + prefix + "/redirect";
+                    good.redirects.put(prefix + "/redirect", target + "/sample.wav");
+                    expect("Header redirect " + names[i] + " raw=" + rawCredentials, redirect, null, roots, true, null,
+                            new HeaderCheck(headers, cookies, rawCredentials, Map.of(redirect, true, target + "/sample.wav", same)));
+
+                    final String child = prefix + "/child.m3u8", master = prefix + "/master.m3u8";
+                    final byte[] playlist = playlist(target, target, init, segment);
+                    good.files.put(child, playlist);
+                    other.files.put(child, playlist);
+                    good.files.put(master, master(target + child));
+                    expect("Header HLS " + names[i] + " raw=" + rawCredentials, origin + master, "hls", roots, true, null,
+                            new HeaderCheck(headers, cookies, rawCredentials, Map.of(origin + master, true,
+                                    target + child, same, target + "/" + init, same, target + "/" + segment, same)));
+
+                    final String dash = prefix + "/manifest.mpd";
+                    good.files.put(dash, (mpd.substring(0, period) + "<BaseURL>" + target + "/</BaseURL>\n"
+                            + mpd.substring(period)).getBytes(StandardCharsets.UTF_8));
+                    expect("Header DASH " + names[i] + " raw=" + rawCredentials, origin + dash, "dash", roots, true, null,
+                            new HeaderCheck(headers, cookies, rawCredentials, Map.of(origin + dash, true,
+                                    target + "/" + init, same, target + "/" + segment, same)));
+                }
+
+                // A FOREIGN SET-COOKIE MUST NOT REPLACE THE COOKIE WHEN THE CHAIN RETURNS HOME.
+                final String prefix = "/set-cookie-" + i;
+                good.responseCookies.put(prefix + "/seed", VALUE + "; path=/");
+                good.redirects.put(prefix + "/seed", target + prefix + "/step");
+                for (final Endpoint endpoint: List.of(good, other)) {
+                    endpoint.responseCookies.put(prefix + "/step", (same ? VALUE : "wm=poison") + "; path=/");
+                    endpoint.redirects.put(prefix + "/step", origin + prefix + "/done.wav");
+                }
+                good.files.put(prefix + "/done.wav", files.get("/sample.wav"));
+                expect("Set-Cookie return " + names[i], origin + prefix + "/seed", null, roots, true, null,
+                        new HeaderCheck(ordinary, null, false, Map.of(origin + prefix + "/seed", false,
+                                target + prefix + "/step", same, origin + prefix + "/done.wav", true)));
+            }
+
+            final String initial = origin + "/headers-bare-cr";
+            good.redirects.put("/headers-bare-cr", other.dns() + "/sample.wav");
+            final String split = raw.toString().replace("\r\nAuthorization: " + VALUE + "\r\n",
+                    "\r\nUser-Agent: fixture\rAuthorization: " + VALUE + "\r\n");
+            expect("Bare-CR credential boundary", initial, null, roots, true, null,
+                    new HeaderCheck(split, null, true, Map.of(initial, true, other.dns() + "/sample.wav", false)));
+        }
     }
 
     private static byte[] wave() {
@@ -185,6 +259,12 @@ public final class VerifyTLS {
 
     private static void expect(final String name, final String url, final String demuxer, final Path roots,
                                final boolean success, final Endpoint rejected) {
+        expect(name, url, demuxer, roots, success, rejected, null);
+    }
+
+    private static void expect(final String name, final String url, final String demuxer, final Path roots,
+                               final boolean success, final Endpoint rejected, final HeaderCheck headers) {
+        HEADER_HITS.clear();
         final int previous = rejected == null ? 0 : rejected.requests.get();
         final long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(8);
         final Callback_Pointer interrupt = new Callback_Pointer() {
@@ -218,6 +298,9 @@ public final class VerifyTLS {
             if (local)
                 avutil.av_dict_set(options, "protocol_whitelist", "file,http,https,tcp,tls,crypto,data", 0);
             avutil.av_dict_set(options, "rw_timeout", "3000000", 0);
+            if (headers != null && (avutil.av_dict_set(options, "headers", headers.raw(), 0) < 0
+                    || avutil.av_dict_set(options, "cookies", headers.cookies(), 0) < 0))
+                throw new IllegalStateException("Could not configure header fixture options");
             final int result = avformat.avformat_open_input(context, url,
                     demuxer == null ? null : avformat.av_find_input_format(demuxer), options);
             if (result < 0) context = null;
@@ -234,6 +317,23 @@ public final class VerifyTLS {
         if (read != success || (rejected != null && rejected.requests.get() != previous))
             throw new IllegalStateException(name + ": read=" + read + ", expected=" + success + ", rejected peer HTTP requests="
                     + (rejected == null ? 0 : rejected.requests.get() - previous));
+        if (headers != null) {
+            final var seen = new HashSet<String>();
+            for (final HeaderHit hit: HEADER_HITS) {
+                final Boolean allowed = headers.expected().get(hit.url());
+                if (allowed == null || !"preserved".equals(hit.ordinary()))
+                    throw new IllegalStateException(name + ": incorrect Host, unexpected target or lost ordinary header: " + hit.url());
+                seen.add(hit.url());
+                for (final String field: CREDENTIALS) {
+                    final boolean expected = allowed && (headers.rawCredentials() || field.equals("Cookie"));
+                    final List<String> values = hit.credentials().get(field);
+                    if (expected ? !List.of(VALUE).equals(values) : values != null)
+                        throw new IllegalStateException(name + ": credential policy mismatch for " + field + " at " + hit.url());
+                }
+            }
+            if (!seen.containsAll(headers.expected().keySet()))
+                throw new IllegalStateException(name + ": a required redirect, playlist or segment was not requested");
+        }
         System.out.println("PASS " + name);
     }
 
@@ -241,6 +341,7 @@ public final class VerifyTLS {
         final HttpsServer server;
         final Map<String, byte[]> files = new ConcurrentHashMap<>();
         final Map<String, String> redirects = new ConcurrentHashMap<>();
+        final Map<String, String> responseCookies = new ConcurrentHashMap<>();
         final AtomicInteger requests = new AtomicInteger();
 
         Endpoint(final KeyStore keys, final Map<String, byte[]> media) throws Exception {
@@ -262,6 +363,16 @@ public final class VerifyTLS {
             this.requests.incrementAndGet();
             try (exchange) {
                 final String path = exchange.getRequestURI().getPath();
+                final var credentials = new LinkedHashMap<String, List<String>>();
+                for (final String field: CREDENTIALS) {
+                    final var values = exchange.getRequestHeaders().get(field);
+                    if (values != null) credentials.put(field, List.copyOf(values));
+                }
+                HEADER_HITS.add(new HeaderHit((exchange instanceof HttpsExchange ? "https://" : "http://")
+                        + exchange.getRequestHeaders().getFirst("Host") + path, credentials,
+                        exchange.getRequestHeaders().getFirst("X-Test")));
+                final String cookie = this.responseCookies.get(path);
+                if (cookie != null) exchange.getResponseHeaders().set("Set-Cookie", cookie);
                 final String redirect = this.redirects.get(path);
                 if (redirect != null) {
                     exchange.getResponseHeaders().set("Location", redirect);

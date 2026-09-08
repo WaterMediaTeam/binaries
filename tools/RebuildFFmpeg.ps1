@@ -20,6 +20,8 @@ $tlsPatch = Join-Path $PSScriptRoot 'ffmpeg-tls.patch'
 if ($properties.ffmpeg_tls_patch_sha256 -notmatch '^[a-f0-9]{64}$' -or (Get-FileHash -LiteralPath $tlsPatch -Algorithm SHA256).Hash -ine $properties.ffmpeg_tls_patch_sha256) { throw 'Native TLS patch SHA-256 mismatch' }
 $securityPatch = Join-Path $PSScriptRoot 'ffmpeg-security.patch'
 if ($properties.ffmpeg_security_patch_sha256 -notmatch '^[a-f0-9]{64}$' -or (Get-FileHash -LiteralPath $securityPatch -Algorithm SHA256).Hash -ine $properties.ffmpeg_security_patch_sha256) { throw 'Native security patch SHA-256 mismatch' }
+$headersPatch = Join-Path $PSScriptRoot 'ffmpeg-headers.patch'
+if ($properties.ffmpeg_headers_patch_sha256 -notmatch '^[a-f0-9]{64}$' -or (Get-FileHash -LiteralPath $headersPatch -Algorithm SHA256).Hash -ine $properties.ffmpeg_headers_patch_sha256) { throw 'Native HTTP headers patch SHA-256 mismatch' }
 if ($revision -notmatch '^[a-f0-9]{40}$' -or $x264 -notmatch '^[a-f0-9]{40}$' -or $xmlVersion -notmatch '^\d+\.\d+\.\d+$' -or $sslVersion -notmatch '^\d+\.\d+\.\d+$') {
     throw 'Native source revisions and libxml2 version must be pinned in gradle.properties'
 }
@@ -88,7 +90,8 @@ $changes = @(
     @('--disable-xlib"', '--disable-xlib --disable-vdpau"'),
     @('-lWs2_32 -lcrypt32 -lpthread', '-lWs2_32 -lcrypt32 -lbcrypt -lpthread'),
     @('patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg.patch', ('patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg.patch' + "`n" + 'patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg-tls.patch')),
-    @('patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg-tls.patch', ('patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg-tls.patch' + "`n" + 'patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg-security.patch'))
+    @('patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg-tls.patch', ('patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg-tls.patch' + "`n" + 'patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg-security.patch')),
+    @('patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg-security.patch', ('patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg-security.patch' + "`n" + 'patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg-headers.patch'))
 )
 foreach ($change in $changes) {
     if ($change.Count -ne 2) { throw 'Each native recipe replacement must contain exactly two strings' }
@@ -98,8 +101,10 @@ foreach ($change in $changes) {
 if (!$recipe.Contains("FFMPEG_VERSION=$($properties.ffmpeg_version.Split('-')[0])")) { throw 'Source FFmpeg version disagrees with the Java wrappers' }
 if ([regex]::Matches($recipe, [regex]::Escape('patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg-tls.patch')).Count -ne 1) { throw 'The native recipe must apply the TLS patch exactly once' }
 if ([regex]::Matches($recipe, [regex]::Escape('patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg-security.patch')).Count -ne 1) { throw 'The native recipe must apply the security patch exactly once' }
+if ([regex]::Matches($recipe, [regex]::Escape('patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg-headers.patch')).Count -ne 1) { throw 'The native recipe must apply the HTTP headers patch exactly once' }
 Copy-Item -LiteralPath $tlsPatch -Destination (Join-Path $source 'ffmpeg/ffmpeg-tls.patch') -Force
 Copy-Item -LiteralPath $securityPatch -Destination (Join-Path $source 'ffmpeg/ffmpeg-security.patch') -Force
+Copy-Item -LiteralPath $headersPatch -Destination (Join-Path $source 'ffmpeg/ffmpeg-headers.patch') -Force
 [IO.File]::WriteAllText((Join-Path $source 'ffmpeg/cppbuild.sh'), $recipe, [Text.UTF8Encoding]::new($false))
 $upstreamVersion = '<version>' + $properties.ffmpeg_version.Split('-')[0] + '-${project.parent.version}</version>'
 if (!$pom.Contains($upstreamVersion)) { throw 'Unexpected FFmpeg Maven version expression' }
@@ -137,6 +142,7 @@ Write-Output "Verified OpenSSL $sslVersion SHA-256: $($properties.openssl_sha256
 Write-Output "Verified x264 $x264 SHA-256: $($properties.ffmpeg_x264_sha256)"
 Write-Output "Verified TLS patch SHA-256: $($properties.ffmpeg_tls_patch_sha256)"
 Write-Output "Verified security patch SHA-256: $($properties.ffmpeg_security_patch_sha256)"
+Write-Output "Verified HTTP headers patch SHA-256: $($properties.ffmpeg_headers_patch_sha256)"
 if ($PrepareOnly) { return }
 
 if (!$VerifyOnly) {
@@ -188,12 +194,58 @@ if (!$VerifyOnly) {
     } finally { Pop-Location }
 }
 $ffmpegSource = [IO.Path]::GetFullPath((Join-Path $source "ffmpeg/cppbuild/$Platform-gpl/ffmpeg-$($properties.ffmpeg_version.Split('-')[0])"))
-$patchDirectory = [IO.Path]::GetRelativePath($root, $ffmpegSource).Replace('\', '/')
-if ($patchDirectory.StartsWith('../', [StringComparison]::Ordinal)) { throw 'Native TLS verification escaped its build directory' }
-& git -C $root apply --reverse --check "--directory=$patchDirectory" $tlsPatch
-if ($LASTEXITCODE -ne 0) { throw 'Compiled FFmpeg sources do not contain the complete reviewed TLS patch' }
-& git -C $root apply --reverse --check "--directory=$patchDirectory" $securityPatch
-if ($LASTEXITCODE -ne 0) { throw 'Compiled FFmpeg sources do not contain the complete reviewed security patch' }
+$patches = @($tlsPatch, $securityPatch, $headersPatch)
+$paths = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+foreach ($patch in $patches) {
+    foreach ($line in [IO.File]::ReadLines($patch)) {
+        if (!$line.StartsWith('+++ ', [StringComparison]::Ordinal)) { continue }
+        if (!$line.StartsWith('+++ b/', [StringComparison]::Ordinal)) { throw 'Native patches must modify existing source files' }
+        $path = $line.Substring(6)
+        if ($path -cnotmatch '^[A-Za-z0-9_.+-]+(?:/[A-Za-z0-9_.+-]+)*$' -or ($path.Split('/') | Where-Object { $_ -eq '.' -or $_ -eq '..' })) {
+            throw "Unsafe source path in native patch: $path"
+        }
+        [void]$paths.Add($path)
+    }
+}
+if ($paths.Count -eq 0) { throw 'Native patch set has no source files to verify' }
+$workPrefix = [IO.Path]::GetFullPath($work) + [IO.Path]::DirectorySeparatorChar
+$check = [IO.Path]::GetFullPath((Join-Path $work ('patch-check-' + [Guid]::NewGuid().ToString('N'))))
+if (!$check.StartsWith($workPrefix, [StringComparison]::Ordinal)) { throw 'Native patch verification escaped its build directory' }
+$checkDirectory = [IO.Path]::GetRelativePath($root, $check).Replace('\', '/')
+if ($checkDirectory.StartsWith('../', [StringComparison]::Ordinal)) { throw 'Native patch verification escaped its repository' }
+$sourceHashes = [Collections.Generic.Dictionary[string, string]]::new([StringComparer]::Ordinal)
+try {
+    [IO.Directory]::CreateDirectory($check) | Out-Null
+    foreach ($path in $paths) {
+        $original = Join-Path $ffmpegSource $path
+        $copy = Join-Path $check $path
+        $sourceHashes[$path] = (Get-FileHash -LiteralPath $original -Algorithm SHA256).Hash
+        [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($copy)) | Out-Null
+        Copy-Item -LiteralPath $original -Destination $copy
+    }
+    # VERIFY OVERLAPPING PATCHES AS A ROUND TRIP WITHOUT MUTATING COMPILED SOURCES.
+    for ($index = $patches.Count - 1; $index -ge 0; $index--) {
+        & git -c core.autocrlf=false -C $root apply --reverse "--directory=$checkDirectory" $patches[$index]
+        if ($LASTEXITCODE -ne 0) { throw "Compiled FFmpeg sources do not contain the complete reviewed patch: $($patches[$index])" }
+    }
+    foreach ($patch in $patches) {
+        & git -c core.autocrlf=false -C $root apply "--directory=$checkDirectory" $patch
+        if ($LASTEXITCODE -ne 0) { throw "Reviewed native patch cannot be reapplied: $patch" }
+    }
+    foreach ($path in $paths) {
+        if ((Get-FileHash -LiteralPath (Join-Path $check $path) -Algorithm SHA256).Hash -cne $sourceHashes[$path] -or
+                (Get-FileHash -LiteralPath (Join-Path $ffmpegSource $path) -Algorithm SHA256).Hash -cne $sourceHashes[$path]) {
+            throw "Native patch round trip disagrees with the compiled source: $path"
+        }
+    }
+    Write-Output "Verified round-trip patch set across $($paths.Count) source files"
+} finally {
+    if (Test-Path -LiteralPath $check) {
+        $cleanup = [IO.Path]::GetFullPath($check)
+        if (!$cleanup.StartsWith($workPrefix, [StringComparison]::Ordinal)) { throw 'Native patch cleanup escaped its build directory' }
+        Remove-Item -LiteralPath $cleanup -Recurse -Force
+    }
+}
 $classifier = "ffmpeg-$($properties.ffmpeg_version)-$Platform-gpl.jar"
 $jar = Join-Path $source "ffmpeg/target/ffmpeg-$Platform-gpl.jar"
 if (!(Test-Path -LiteralPath $jar)) { throw "Native build did not produce its classifier archive: $jar" }
@@ -357,8 +409,9 @@ $lines = @(
     "openssl.sha256=$($properties.openssl_sha256)",
     "tls.patch.sha256=$($properties.ffmpeg_tls_patch_sha256)",
     "security.patch.sha256=$($properties.ffmpeg_security_patch_sha256)",
+    "headers.patch.sha256=$($properties.ffmpeg_headers_patch_sha256)",
     "recipe.sha256=$((Get-FileHash -LiteralPath (Join-Path $source 'ffmpeg/cppbuild.sh') -Algorithm SHA256).Hash.ToLowerInvariant())",
-    'verification=JNI-original-wrappers,DASH,recursive-entities,libxml2-version,openssl-version,imports-closure,clean-environment,TLS',
+    'verification=JNI-original-wrappers,DASH,recursive-entities,libxml2-version,openssl-version,imports-closure,clean-environment,TLS,HTTP-headers',
     "archive=$classifier",
     "archive.sha256=$((Get-FileHash -LiteralPath $jar -Algorithm SHA256).Hash.ToLowerInvariant())"
 )

@@ -10,6 +10,12 @@ The checksum-pinned TLS patch enables certificate verification by default, verif
 and preserves trust options through HTTP, HLS and DASH, including manifests read from local files.
 The separate `ffmpeg-security.patch` backports the reviewed upstream fixes listed below while retaining
 FFmpeg 8.1.2 and the original JavaCPP API. Its independent SHA-256 is mandatory in build and repack records.
+The third `ffmpeg-headers.patch` binds sensitive HTTP headers to their original request origin across
+redirects and nested streams. Its separate checksum and verification result are also mandatory;
+candidates produced before this protection cannot replace the distributed archives.
+`Authorization`, `Proxy-Authorization`, `Cookie`, `Cookie2` and `X-WaterMedia-Token` are retained only
+for the original origin. Foreign requests regenerate `Host` and cannot send or collect its cookies;
+same-origin requests retain the caller's headers.
 
 ```powershell
 ./tools/SetupJava.ps1 -Platform windows-x86_64
@@ -51,10 +57,14 @@ These checks are regression probes, not proof of exhaustive vulnerability covera
 A second fresh Java process runs `VerifyTLS.java` against local HTTPS fixtures. Trusted DNS/IP peers
 and nested HLS/DASH reads must work; untrusted certificates and incorrect endpoint identities must
 be rejected before any HTTP request reaches the rejected peer. Candidates are exported only after
-both probes pass, and their records include the exact TLS patch hash.
-The build also checks that every reviewed TLS hunk is present in the actual FFmpeg source tree.
-The same reverse-application check covers the security patch. Source checks complement the runtime
-probes; they do not claim that every vulnerability has a dedicated exploit regression test.
+both probes pass, and their records include the exact TLS and HTTP headers patch hashes.
+The same suite verifies header and cookie isolation across redirects, ports and nested HLS/DASH reads,
+including same-origin positive cases and a return to the original origin after a foreign request.
+The build verifies the round-trip patch set in an isolated copy of only the touched source files.
+It reverses headers, security and TLS in that order, reapplies TLS, security and headers, then compares
+every file's SHA-256 with the compiled source. This validates overlapping patches without changing
+the build tree. Source checks complement the runtime probes; they do not claim that every vulnerability
+has a dedicated exploit regression test.
 Local manifest fixtures explicitly allow network protocols for these checks; production protocol
 restrictions remain unchanged. Proxy settings are removed from the loopback verification processes.
 
