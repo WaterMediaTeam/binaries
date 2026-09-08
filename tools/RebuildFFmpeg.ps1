@@ -104,6 +104,27 @@ Copy-Item -LiteralPath $securityPatch -Destination (Join-Path $source 'ffmpeg/ff
 $upstreamVersion = '<version>' + $properties.ffmpeg_version.Split('-')[0] + '-${project.parent.version}</version>'
 if (!$pom.Contains($upstreamVersion)) { throw 'Unexpected FFmpeg Maven version expression' }
 $pom = $pom.Replace($upstreamVersion, "<version>$($properties.ffmpeg_version)</version>")
+$macProfile = @'
+    <profile>
+      <id>macos-native</id>
+      <activation><os><family>mac</family></os></activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.bytedeco</groupId>
+            <artifactId>javacpp</artifactId>
+            <configuration>
+              <compilerOptions combine.children="append">
+                <compilerOption>-Wl,-headerpad_max_install_names</compilerOption>
+              </compilerOptions>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+'@
+if (!$pom.Contains('  <profiles>')) { throw 'Unexpected FFmpeg Maven profile structure' }
+$pom = $pom.Replace('  <profiles>', "  <profiles>`n$macProfile")
 [IO.File]::WriteAllText((Join-Path $source 'ffmpeg/pom.xml'), $pom, [Text.UTF8Encoding]::new($false))
 $cache = Join-Path $source 'downloads'
 [IO.Directory]::CreateDirectory($cache) | Out-Null
@@ -148,6 +169,14 @@ if (!$VerifyOnly) {
     if ($Platform -eq 'linux-arm64') {
         if (!$env:USERLAND_PATH -or !(Test-Path -LiteralPath (Join-Path $env:USERLAND_PATH 'build/lib'))) { throw 'Prepared Raspberry Pi userland is required for the ARM64 preset' }
         $nativeOptions += "-Djava.library.path=$($env:USERLAND_PATH)/build/lib"
+    } elseif ($Platform -eq 'linux-x86_64') {
+        $multiarch = (& gcc -print-multiarch).Trim()
+        if ($LASTEXITCODE -ne 0 -or $multiarch -cne 'x86_64-linux-gnu') { throw 'Unexpected Linux x64 compiler multiarch target' }
+        $libraryDirectories = @(@("/usr/$multiarch/lib", "/usr/lib/$multiarch") | Where-Object { Test-Path -LiteralPath $_ -PathType Container })
+        foreach ($dependency in @('libva.so.2', 'libva-drm.so.2', 'libdrm.so.2')) {
+            if (!($libraryDirectories | Where-Object { Test-Path -LiteralPath (Join-Path $_ $dependency) })) { throw "Missing Linux x64 native packaging prerequisite: $dependency" }
+        }
+        $nativeOptions += "-Djava.library.path=$($libraryDirectories -join [IO.Path]::PathSeparator)"
     } elseif ($Platform.StartsWith('macosx-')) {
         if (!$env:GCC_LIBRARY_PATH -or !(Test-Path -LiteralPath (Join-Path $env:GCC_LIBRARY_PATH 'libatomic.1.dylib'))) { throw 'Prepared GCC libatomic is required for the macOS preset' }
         $nativeOptions += "-Djava.library.path=$env:GCC_LIBRARY_PATH"
@@ -189,7 +218,22 @@ try {
         $nativeFiles.Add($name, $destination)
     }
 } finally { $archive.Dispose() }
-if ($nativeFiles.Count -lt 14) { throw 'Native archive lacks FFmpeg or JavaCPP JNI libraries' }
+$extraLibraries = switch ($Platform) {
+    'linux-x86_64' { @('libva.so.2', 'libva-drm.so.2', 'libdrm.so.2') }
+    'linux-arm64' { @('libasound.so.2', 'libbcm_host.so', 'libvchiq_arm.so', 'libvcos.so') }
+    'windows-x86_64' { @('libwinpthread-1.dll') }
+    default { @('libatomic.1.dylib') }
+}
+$extraLibraries = @($extraLibraries)
+if ($nativeFiles.Count -ne 14 + $extraLibraries.Count) { throw "Native archive does not preserve the complete $Platform library inventory" }
+foreach ($dependency in $extraLibraries) {
+    if (!$nativeFiles.ContainsKey($dependency)) { throw "Native archive lacks the required shared dependency: $dependency" }
+}
+foreach ($componentName in @('avcodec', 'avdevice', 'avfilter', 'avformat', 'avutil', 'swscale', 'swresample')) {
+    $shared = @($nativeFiles.Keys | Where-Object { $_ -match "^(lib)?$componentName[.-]" })
+    $jni = @($nativeFiles.Keys | Where-Object { $_ -match "^(lib)?jni$componentName\." })
+    if ($shared.Count -ne 1 -or $jni.Count -ne 1) { throw "Native archive needs exactly one shared library and JNI bridge for $componentName" }
+}
 $component = '^(lib)?(jni)?(avcodec|avdevice|avfilter|avformat|avutil|swscale|swresample)[.-]'
 $support = '^(libwinpthread-1\.dll|libatomic\.1\.dylib|libva(?:-drm)?\.so\.2|libdrm\.so\.2|libasound\.so\.2|libbcm_host\.so|libvchiq_arm\.so|libvcos\.so|(?:lib)?jnijavacpp\.(?:dll|so|dylib))$'
 $imports = [Collections.Generic.List[string]]::new()

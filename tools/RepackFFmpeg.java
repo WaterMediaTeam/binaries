@@ -16,6 +16,7 @@ import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.TreeMap;
@@ -67,6 +68,12 @@ public final class RepackFFmpeg {
         platforms.put("macos", "macosx-x86_64");
         platforms.put("macos-arm64", "macosx-arm64");
         platforms.put("windows", "windows-x86_64");
+        final Map<String, List<String>> support = Map.of(
+                "linux", List.of("libva.so.2", "libva-drm.so.2", "libdrm.so.2"),
+                "linux-arm64", List.of("libasound.so.2", "libbcm_host.so", "libvchiq_arm.so", "libvcos.so"),
+                "macos", List.of("libatomic.1.dylib"),
+                "macos-arm64", List.of("libatomic.1.dylib"),
+                "windows", List.of("libwinpthread-1.dll"));
         final Path downloads = Files.createDirectories(root.resolve("build/ffmpeg-sources"));
         final Path staging = Files.createDirectories(root.resolve("build/ffmpeg-packages"));
         final Path resources = Files.createDirectories(root.resolve("src/main/resources/libs"));
@@ -163,6 +170,10 @@ public final class RepackFFmpeg {
                     final boolean nativePresent = libraries.keySet().stream().anyMatch(file -> file.matches("(?:lib)?" + component + "[.-].*"));
                     final boolean jniPresent = libraries.keySet().stream().anyMatch(file -> file.matches("(?:lib)?jni" + component + "\\..*"));
                     if (!nativePresent || !jniPresent) throw new IOException("Missing native or JNI component: " + component);
+                }
+                final List<String> required = support.get(platform.getKey());
+                if (libraries.size() != 14 + required.size() || !libraries.keySet().containsAll(required)) {
+                    throw new IOException("Candidate must preserve the complete native inventory for " + platform.getValue());
                 }
                 try (final var zip = new ZipOutputStream(new BufferedOutputStream(Files.newOutputStream(output)))) {
                     zip.setLevel(level);

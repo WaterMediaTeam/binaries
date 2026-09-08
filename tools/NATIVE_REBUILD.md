@@ -36,6 +36,9 @@ codec dependencies, parse its headers, then compile all seven JNI libraries with
 `copyResources`. A standalone FFmpeg CLI build cannot replace these classifier JARs. Linux preparation
 also provides pinned Vulkan headers and the ARM64 Raspberry Pi userland expected by the original preset.
 On macOS, the GCC library directory is passed directly to Maven so JavaCPP packages `libatomic`.
+The macOS Maven profile reserves Mach-O header space with `-headerpad_max_install_names` before
+portable install names and signatures are written. Linux x64 passes the verified compiler multiarch
+library directories to JavaCPP so VA, VA-DRM and DRM are included in the archive.
 
 Before a candidate is exported, the script generates a local H.264 DASH fixture and launches a fresh
 Java process using the original, checksum-pinned Maven Java wrappers. It must load all seven JNI
@@ -60,6 +63,10 @@ PulseAudio, XCB, ALSA, VA-API and DRM may come from the operating system. Some a
 the preset, depending on architecture. These device and display libraries are distinct from the
 statically linked codec, XML and TLS libraries. A minimal Linux container still needs those system
 packages; dependencies outside the declared set are rejected.
+
+Each classifier must also preserve the original packaged inventory: seven FFmpeg libraries and seven
+JNI bridges, plus VA/VA-DRM/DRM on Linux x64, ALSA/Broadcom/VCOS/VCHIQ on Linux ARM64, `libatomic` on
+macOS or `libwinpthread` on Windows. A system installation cannot hide a missing packaged dependency.
 
 Candidate JARs and their provenance are placed under `build/rebuilt/<platform>`. The workflow uploads
 only successfully verified candidates and never creates branches, commits, releases or publications.
