@@ -98,3 +98,64 @@ jobs:
             build/native-rebuild/smoke-*/*.m4s
           if-no-files-found: ignore
           compression-level: 0
+
+  repack:
+    if: ${{ success() && inputs.platform == 'all' }}
+    needs: build
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout native packaging sources
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Set up patched Java
+        shell: pwsh
+        run: ./tools/SetupJava.ps1 -Platform linux-x86_64
+
+      - name: Download Linux x64 candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: ffmpeg-linux-x86_64
+          path: build/rebuilt/linux-x86_64
+          digest-mismatch: error
+
+      - name: Download Linux ARM64 candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: ffmpeg-linux-arm64
+          path: build/rebuilt/linux-arm64
+          digest-mismatch: error
+
+      - name: Download Windows x64 candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: ffmpeg-windows-x86_64
+          path: build/rebuilt/windows-x86_64
+          digest-mismatch: error
+
+      - name: Download macOS x64 candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: ffmpeg-macosx-x86_64
+          path: build/rebuilt/macosx-x86_64
+          digest-mismatch: error
+
+      - name: Download macOS ARM64 candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: ffmpeg-macosx-arm64
+          path: build/rebuilt/macosx-arm64
+          digest-mismatch: error
+
+      - name: Repack verified native set
+        shell: pwsh
+        run: java tools/RepackFFmpeg.java . build/rebuilt
+
+      - name: Upload verified native archives
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ffmpeg-gpl
+          path: |
+            src/main/resources/libs/ffmpeg-*.zip
+            tools/ffmpeg-manifest.properties
+          if-no-files-found: error
+          compression-level: 0

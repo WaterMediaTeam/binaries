@@ -83,6 +83,9 @@ only successfully verified candidates and never creates branches, commits, relea
 Its platform selector can retry one failed target while the other builds continue. Failed jobs may
 upload separate `unverified-ffmpeg-*` diagnostics containing intermediate JARs, the CLI and build logs.
 These lack the successful verification record and must never replace the distributed libraries.
+An `all` run repacks only after every matrix target succeeds. It downloads each verified artifact into
+its own platform directory, validates the five records as one set and uploads the completed `ffmpeg-gpl`
+resource bundle. Single-platform retries stop after uploading their candidate.
 All five candidates must pass before replacing the distributed native set. Updating a recipe does
 not change the currently bundled ZIPs by itself; the source manifest must match any replaced archives.
 

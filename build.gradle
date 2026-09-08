@@ -1,6 +1,5 @@
 import me.modmuss50.mpp.platforms.curseforge.Curseforge
 import me.modmuss50.mpp.platforms.modrinth.Modrinth
-import org.gradle.api.attributes.Usage
 
 plugins {
     id 'java'
@@ -19,28 +18,27 @@ java {
     sourceCompatibility = targetCompatibility = JavaVersion.VERSION_17
 }
 
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = Integer.parseInt(java_release)
+}
+
 println("Gradle Java: ${JavaVersion.current()}")
-println("Building project: ${properties.libname}")
+println("Building project: ${project.libname}")
 println("Java: ${System.getProperty 'java.version'}, JVM: ${System.getProperty 'java.vm.version'} (${System.getProperty 'java.vendor'}), Arch: ${System.getProperty 'os.arch'}, Encoding: ${System.getProperty "file.encoding"}")
 
 repositories {
     google()
     mavenCentral()
-    maven { url 'https://jitpack.io' }
-    maven { url "https://repo.spongepowered.org/maven" }
+    maven { url = 'https://jitpack.io' }
+    maven { url = "https://repo.spongepowered.org/maven" }
 }
 
 configurations {
     include
     include.extendsFrom(implementation)
 
-    // BINARIES COMPILES AGAINST WATERMEDIA'S JAVA-API VARIANT SO IT INHERITS THE PROVIDED LIBS
-    // WATERMEDIA EXPOSES VIA compileOnlyApi (tools, log4j, gson, modloaders) WITHOUT REDECLARING THEM
-    library {
-        attributes {
-            attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage, Usage.JAVA_API))
-        }
-    }
+    library
 }
 
 sourceSets {
@@ -57,25 +55,38 @@ sourceSets {
 }
 
 dependencies {
-    // WATERMEDIA IS THE PROVIDER: IT EXPOSES tools, log4j, gson AND modloaders TRANSITIVELY
-    // (SEE ITS compileOnlyApi), SO BINARIES COMPILES AGAINST WATERMEDIA ALONE
-    library "org.watermedia:watermedia"
+    library "com.github.WaterMediaTeam:modloaders:$loaders_version"
+    library "com.google.code.gson:gson:$gson_version"
+    library "org.apache.logging.log4j:log4j-api:$log4j_version"
+    library "org.apache.logging.log4j:log4j-core:$log4j_version"
 
-    // SHADED (AND RELOCATED) INTO THE BINARIES JAR: XZ DECOMPRESSES THE SHIPPED NATIVE ZIPS
-    include "org.tukaani:xz:$xz_version"
+    // XZ IS SHADED FOR PRODUCTION AND TRANSITIVE ON THE UNRELOCATED DEVELOPMENT JAR.
+    implementation "org.tukaani:xz:$xz_version"
+    testImplementation "org.junit.jupiter:junit-jupiter:$junit_version"
+    testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+}
+
+test {
+    useJUnitPlatform()
+    inputs.files('tools/RepackFFmpeg.java', 'gradle.properties')
 }
 
 // PROCESS TARGET RESOURCES WITH MOD INFO
+def resourceProperties = providers.gradlePropertiesPrefixedBy('').get()
 processResources {
     outputs.upToDateWhen { false }
+    inputs.properties(resourceProperties)
+    from('tools/ffmpeg-manifest.properties') {
+        into 'META-INF'
+    }
     filesMatching(['META-INF/mods.toml', 'META-INF/neoforge.mods.toml', 'pack.mcmeta', 'fabric.mod.json']) {
-        expand(project.properties)
+        expand(resourceProperties)
     }
 }
 
-// SHADOWJAR IS THE PUBLISHED ARTIFACT (RELOCATES XZ); THE THIN JAR IS DISABLED SO ONLY IT LANDS IN build/libs
+// COMPOSITE BUILDS USE THE UNRELOCATED JAR; MOD DISTRIBUTION USES SHADOWJAR.
 jar {
-    enabled = false
+    archiveClassifier = 'dev'
 }
 
 shadowJar {
@@ -96,7 +107,6 @@ shadowJar {
         attributes "Implementation-Version"     : version
         attributes "Implementation-Vendor"      : authors
         attributes "Implementation-Timestamp"   : new Date().format("yyyy-MM-dd'T'HH:mm:ssZ")
-        attributes "Main-Class": mainclass
     }
     // XZ IS A MULTI-RELEASE JAR AND SHADOW COPIES ITS `Multi-Release: true` ONTO OUR MANIFEST (IT SCANS
     // THE SHADED DEPS ON EXECUTION, SO THE ATTRIBUTE CANNOT BE UNSET FROM THE manifest {} BLOCK ABOVE).
@@ -117,6 +127,11 @@ def loaders = modloaders.split(',').collect { it.trim() }
 // INSIDE publishMods THE DELEGATE IS THE EXTENSION, SO A BARE `version` HITS ITS Property<String> AND
 // STRINGIFIES TO "extension 'publishMods' property 'version'"; READ THE PROJECT VERSION OUT HERE INSTEAD
 def publishVersion = project.version.toString()
+def releaseType = project.versiontype.toString()
+if (!(releaseType in ['ALPHA', 'BETA', 'STABLE'])) throw new GradleException('versiontype must be ALPHA, BETA or STABLE')
+if (!(publishVersion ==~ (releaseType == 'STABLE' ? /\d+\.\d+\.\d+/ : /\d+\.\d+\.\d+\.\d+/))) {
+    throw new GradleException('STABLE versions require three components; ALPHA and BETA require four')
+}
 
 // PLATFORMS ARE CONFIGURED THROUGH THE TYPED Action OVERLOAD AND AN EXPLICIT RECEIVER: THE PLUGIN ALSO
 // EXPOSES KOTLIN Closure OVERLOADS THAT THE GROOVY IDE INSPECTION CANNOT RESOLVE, WHICH FLAGS THE WHOLE
@@ -124,7 +139,7 @@ def publishVersion = project.version.toString()
 publishMods {
     file = shadowJar.archiveFile
     changelog = getChangelogText()
-    type = ["alpha": ALPHA, "beta": BETA, "release": STABLE].getOrDefault(project.versiontype.toString().toLowerCase(), ALPHA)
+    type = ['ALPHA': ALPHA, 'BETA': BETA, 'STABLE': STABLE][releaseType]
     displayName = publishVersion
     modLoaders.addAll(loaders)
     maxRetries = 2
@@ -139,7 +154,6 @@ publishMods {
         cf.clientRequired = true
         cf.serverRequired = false
         cf.projectSlug = slug // THE MOD ID USES AN UNDERSCORE; THE REAL CURSEFORGE SLUG IS HYPHENATED
-        cf.requires("watermedia")
         // THE CURSEFORGE UPLOAD API HAS NO ENDPOINT TO EDIT THE PROJECT PAGE DESCRIPTION; SYNC IS MODRINTH-ONLY
     } as Action<Curseforge>)
 
@@ -147,7 +161,6 @@ publishMods {
         mr.accessToken = MT_TOKEN
         mr.projectId = modrinthid
         mr.minecraftVersions.addAll(mcVers)
-        mr.requires("watermedia")
         mr.projectDescription = providers.fileContents(layout.projectDirectory.file("README.md")).asText
     } as Action<Modrinth>)
 }

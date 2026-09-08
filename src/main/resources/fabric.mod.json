@@ -22,7 +22,6 @@
   },
   "depends": {
     "java": "$javarange",
-    "fabricloader": "$fabricrange",
-    "watermedia": ">=$watermediaversion"
+    "fabricloader": "$fabricrange"
   }
 }

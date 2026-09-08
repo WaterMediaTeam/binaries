@@ -15,10 +15,3 @@ logoFile="pack.png"
     authors="$authors"
     logoFile="pack.png"
     description='''$description'''
-
-[[dependencies.$id]]
-    modId="watermedia"
-    type="required"
-    versionRange="[$watermediaversion,)"
-    ordering="NONE"
-    side="CLIENT"

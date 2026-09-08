@@ -1,14 +1,15 @@
 FFmpeg (https://ffmpeg.org) provides the native multimedia decoding libraries shipped by this
 module (avcodec, avformat, avutil, avfilter, avdevice, swscale, swresample). The native libraries
-are mirrored from the JavaCPP/Bytedeco FFmpeg distribution (org.bytedeco:ffmpeg:8.0.1-1.5.13, the
+are mirrored from the JavaCPP/Bytedeco FFmpeg distribution (org.bytedeco:ffmpeg:8.1.2-1.5.14, the
 "-gpl" variant) and are bundled inside this jar as per-platform archives under /libs. This is a GPL
-build of FFmpeg 8.0.1 (configured with --enable-gpl --enable-version3) that statically incorporates
-additional GPL- and LGPL-licensed codec libraries (including x264, x265, xvid, and others). As an
+build of FFmpeg 8.1.2 (configured with --enable-gpl --enable-version3) that statically incorporates
+additional GPL- and LGPL-licensed codec libraries (including x264, x265, and others). As an
 aggregate, the FFmpeg native distribution is covered by the GNU General Public License, version 3.
 
 The supporting native libraries bundled alongside FFmpeg are documented separately: the JavaCPP JNI
 glue in javacpp-LICENSE.txt; the Linux VA-API/DRM libraries in libva-libdrm-LICENSE.txt; and the
-macOS GCC atomics runtime in libatomic-LICENSE.txt.
+macOS GCC atomics runtime in libatomic-LICENSE.txt; and the Windows pthread runtime in
+winpthreads-LICENSE.txt.
 
 The full text of the GNU General Public License, version 3, follows:
 
