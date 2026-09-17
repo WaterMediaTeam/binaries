@@ -3,14 +3,23 @@ import org.bytedeco.ffmpeg.avformat.AVIOContext;
 import org.bytedeco.ffmpeg.avutil.AVDictionary;
 import org.bytedeco.ffmpeg.global.*;
 import org.bytedeco.javacpp.BytePointer;
+import org.bytedeco.javacpp.Pointer;
+import org.bytedeco.javacpp.PointerPointer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.Locale;
 import java.util.zip.ZipFile;
 
 /** Verifies a rebuilt classifier in its native operating system before it becomes a release candidate. */
 public final class VerifyFFmpeg {
     public static void main(final String[] args) throws Exception {
+        if (args.length != 5 && args.length != 6)
+            throw new IllegalArgumentException("Usage: VerifyFFmpeg <version> <libxml2> <openssl> <classifier> <dash> [lgpl|gpl]");
+        final String expectedVariant = args.length == 6 ? args[5] : null;
+        if (expectedVariant != null && !expectedVariant.equals("lgpl") && !expectedVariant.equals("gpl"))
+            throw new IllegalArgumentException("Unknown FFmpeg recipe variant: " + expectedVariant);
         final String version = avutil.av_version_info().getString();
         if (!version.equals(args[0])) throw new IllegalStateException("Unexpected FFmpeg version: " + version);
         avcodec.avcodec_version();
@@ -28,16 +37,37 @@ public final class VerifyFFmpeg {
                 avfilter.avfilter_configuration().getString(), swscale.swscale_configuration().getString(),
                 swresample.swresample_configuration().getString()};
         for (int i = 0; i < licenses.length; i++) {
-            if (!licenses[i].startsWith("LGPL version 3"))
-                throw new IllegalStateException("FFmpeg component " + i + " is not LGPLv3: " + licenses[i]);
-            if (configurations[i].contains("--enable-gpl") || configurations[i].contains("--enable-nonfree")
-                    || configurations[i].contains("--enable-libx264") || configurations[i].contains("--enable-libx265"))
-                throw new IllegalStateException("FFmpeg component " + i + " contains a prohibited build option");
+            if (licenses[i] == null || licenses[i].isBlank() || !licenses[0].equals(licenses[i]))
+                throw new IllegalStateException("FFmpeg components disagree on their declared license");
+            if (configurations[i] == null || configurations[i].isBlank())
+                throw new IllegalStateException("FFmpeg component " + i + " has no build configuration");
+            if (expectedVariant != null) {
+                final var flags = Arrays.asList(configurations[i].trim().split("\\s+"));
+                final boolean gpl = expectedVariant.equals("gpl");
+                if (!flags.contains("--enable-version3") || !flags.contains("--disable-nonfree")
+                        || flags.contains("--enable-nonfree")
+                        || flags.contains("--enable-gpl") != gpl
+                        || flags.contains("--disable-gpl") == gpl
+                        || flags.contains("--enable-libx264") != gpl
+                        || flags.contains("--enable-libx265") != gpl) {
+                    throw new IllegalStateException("FFmpeg component " + i + " does not match the " + expectedVariant
+                            + " recipe: " + configurations[i]);
+                }
+            }
         }
-        if (avcodec.avcodec_find_encoder_by_name("libx264") != null || avcodec.avcodec_find_encoder_by_name("libx265") != null)
-            throw new IllegalStateException("GPL encoders remain registered");
-        if (avcodec.avcodec_find_encoder_by_name("libopenh264") == null)
-            throw new IllegalStateException("The LGPL H.264 fixture encoder is missing");
+        if (expectedVariant != null) {
+            final String declared = licenses[0].toLowerCase(Locale.ROOT);
+            final boolean lesser = declared.contains("lgpl") || declared.contains("lesser general public license");
+            final boolean general = declared.contains("gpl") || declared.contains("general public license");
+            final boolean gpl = expectedVariant.equals("gpl");
+            final var x264 = avcodec.avcodec_find_encoder_by_name("libx264");
+            final var x265 = avcodec.avcodec_find_encoder_by_name("libx265");
+            if (lesser == gpl || !general
+                    || (x264 != null && !x264.isNull()) != gpl
+                    || (x265 != null && !x265.isNull()) != gpl) {
+                throw new IllegalStateException("FFmpeg license or x264/x265 encoders do not match the " + expectedVariant + " recipe");
+            }
+        }
         final String[] xml = args[1].split("\\.");
         final String expected = Integer.toString(Integer.parseInt(xml[0]) * 10000 + Integer.parseInt(xml[1]) * 100 + Integer.parseInt(xml[2]));
         try (final var archive = new ZipFile(args[3])) {
@@ -55,7 +85,7 @@ public final class VerifyFFmpeg {
         final var format = new AVFormatContext(null);
         try {
             if (avformat.avformat_open_input(format, Path.of(args[4]).toAbsolutePath().toString().replace('\\', '/'), null, null) < 0
-                    || avformat.avformat_find_stream_info(format, (org.bytedeco.javacpp.PointerPointer) null) < 0 || format.nb_streams() < 1) {
+                    || avformat.avformat_find_stream_info(format, (PointerPointer<?>) null) < 0 || format.nb_streams() < 1) {
                 throw new IllegalStateException("Rebuilt FFmpeg failed the local DASH playback probe");
             }
         } finally {
@@ -101,7 +131,7 @@ public final class VerifyFFmpeg {
                     throw new IllegalStateException("MPEG system-header bounds failed for " + streams + " streams: " + result);
             } finally {
                 if (!buffer.isNull()) {
-                    final var data = new BytePointer((org.bytedeco.javacpp.Pointer) null);
+                    final var data = new BytePointer((Pointer) null);
                     avformat.avio_close_dyn_buf(buffer, data);
                     avutil.av_free(data);
                     output.pb(null);
@@ -109,6 +139,7 @@ public final class VerifyFFmpeg {
                 avformat.avformat_free_context(output);
             }
         }
-        System.out.println("Verified FFmpeg " + version + ", libxml2 " + args[1] + ", OpenSSL " + args[2] + ", seven JNI components, LGPLv3 without x264/x265, DASH, malformed XML and MPEG stream-count boundaries");
+        System.out.println("Verified FFmpeg " + version + " (" + licenses[0] + "), libxml2 " + args[1]
+                + ", OpenSSL " + args[2] + ", seven JNI components, DASH, malformed XML and MPEG stream-count boundaries");
     }
 }

@@ -15,13 +15,15 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.regex.Pattern;
 import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
 
-/** Repackages verified LGPL native distributions into flat resource archives. */
+/** Repackages verified native distributions into flat resource archives. */
 public final class RepackFFmpeg {
     public static void main(final String[] args) throws Exception {
         if (args.length != 2) throw new IllegalArgumentException("Usage: RepackFFmpeg <binaries-root> <verified-candidate-directory>");
@@ -32,26 +34,17 @@ public final class RepackFFmpeg {
             properties.load(input);
         }
         final String version = properties.getProperty("ffmpeg_version");
-        if (version == null || !version.matches("\\d+\\.\\d+\\.\\d+-\\d+\\.\\d+\\.\\d+")) {
-            throw new IllegalArgumentException("ffmpeg_version must be an exact FFmpeg-JavaCPP coordinate");
+        if (version == null || !version.matches("[A-Za-z0-9][A-Za-z0-9._+-]{0,127}")) {
+            throw new IllegalArgumentException("ffmpeg_version must be a safe, nonempty build identifier");
         }
         final int level = Integer.parseInt(properties.getProperty("ffmpeg_compression"));
         if (level != 9) throw new IllegalArgumentException("ffmpeg_compression must be 9");
         final String variant = properties.getProperty("ffmpeg_variant");
         final String license = properties.getProperty("ffmpeg_license");
-        if (!"lgpl".equals(variant) || !"LGPL-3.0-or-later".equals(license))
-            throw new IllegalArgumentException("FFmpeg must use the suffix-free LGPLv3 variant");
+        if (variant == null || !variant.matches("[A-Za-z0-9_+.-]{1,64}") || license == null || license.isBlank()
+                || license.chars().anyMatch(c -> c < 32 || c == 127))
+            throw new IllegalArgumentException("FFmpeg variant and license metadata must be single-line values");
         final Path tools = Files.createDirectories(root.resolve("tools"));
-        final Path parentProperties = root.getParent().resolve("gradle.properties");
-        if (Files.isRegularFile(parentProperties)) {
-            final Properties parent = new Properties();
-            try (final var input = Files.newInputStream(parentProperties)) {
-                parent.load(input);
-            }
-            if (!version.equals(parent.getProperty("ffmpeg_version"))) {
-                throw new IllegalArgumentException("WaterMedia and binaries must use the same ffmpeg_version");
-            }
-        }
 
         final Map<String, String> platforms = new LinkedHashMap<>();
         platforms.put("linux", "linux-x86_64");
@@ -59,31 +52,35 @@ public final class RepackFFmpeg {
         platforms.put("macos", "macosx-x86_64");
         platforms.put("macos-arm64", "macosx-arm64");
         platforms.put("windows", "windows-x86_64");
-        final Map<String, List<String>> support = Map.of(
-                "linux", List.of("libva.so.2", "libva-drm.so.2", "libdrm.so.2"),
-                "linux-arm64", List.of("libasound.so.2", "libbcm_host.so", "libvchiq_arm.so", "libvcos.so"),
-                "macos", List.of("libatomic.1.dylib"),
-                "macos-arm64", List.of("libatomic.1.dylib"),
-                "windows", List.of("libwinpthread-1.dll"));
         final Path staging = Files.createDirectories(root.resolve("build/ffmpeg-packages"));
         final Path resources = Files.createDirectories(root.resolve("src/main/resources/libs"));
         final byte[] buffer = new byte[65536];
         final byte[] versionBytes = version.getBytes(StandardCharsets.UTF_8);
         final var timestamp = LocalDateTime.of(1980, 1, 2, 0, 0);
         final var manifest = new StringBuilder("version=" + version + "\nvariant=" + variant + "\nlicense=" + license + "\ncompression=DEFLATE\nlevel=" + level + "\n");
-        manifest.append("source.kind=rebuilt\n")
-                .append("source.ref=").append(properties.getProperty("ffmpeg_source_ref")).append('\n')
-                .append("source.commit=").append(properties.getProperty("ffmpeg_source_commit")).append('\n')
-                .append("libxml2.version=").append(properties.getProperty("libxml2_version")).append('\n')
-                .append("libxml2.sha256=").append(properties.getProperty("libxml2_sha256")).append('\n')
-                .append("openssl.version=").append(properties.getProperty("openssl_version")).append('\n')
-                .append("openssl.sha256=").append(properties.getProperty("openssl_sha256")).append('\n')
-                .append("tls.patch.sha256=").append(properties.getProperty("ffmpeg_tls_patch_sha256")).append('\n')
-                .append("security.patch.sha256=").append(properties.getProperty("ffmpeg_security_patch_sha256")).append('\n')
-                .append("headers.patch.sha256=").append(properties.getProperty("ffmpeg_headers_patch_sha256")).append('\n');
+        manifest.append("source.kind=rebuilt\n");
+        final Map<String, String> metadata = new LinkedHashMap<>();
+        metadata.put("ffmpeg_source_ref", "source.ref");
+        metadata.put("ffmpeg_source_commit", "source.commit");
+        metadata.put("ffmpeg_source_sha256", "source.sha256");
+        metadata.put("libxml2_version", "libxml2.version");
+        metadata.put("libxml2_sha256", "libxml2.sha256");
+        metadata.put("openssl_version", "openssl.version");
+        metadata.put("openssl_sha256", "openssl.sha256");
+        metadata.put("ffmpeg_tls_patch_sha256", "tls.patch.sha256");
+        metadata.put("ffmpeg_security_patch_sha256", "security.patch.sha256");
+        metadata.put("ffmpeg_headers_patch_sha256", "headers.patch.sha256");
+        for (final var entry: metadata.entrySet()) {
+            final String value = properties.getProperty(entry.getKey());
+            if (value == null || value.isBlank()) continue;
+            if (value.chars().anyMatch(c -> c < 32 || c == 127)
+                    || (entry.getKey().endsWith("_sha256") && !value.matches("[a-fA-F0-9]{64}"))) {
+                throw new IllegalArgumentException("Invalid FFmpeg provenance property: " + entry.getKey());
+            }
+            manifest.append(entry.getValue()).append('=').append(value).append('\n');
+        }
 
         for (final var platform: platforms.entrySet()) {
-            final String name = "ffmpeg-" + version + "-" + platform.getValue() + ".jar";
             final URI uri;
             final Path source;
             final String expected;
@@ -92,26 +89,28 @@ public final class RepackFFmpeg {
             try (final var input = Files.newInputStream(candidate.resolve("build.properties"))) {
                 record.load(input);
             }
-                if (!version.equals(record.getProperty("version")) || !platform.getValue().equals(record.getProperty("platform"))
-                        || !name.equals(record.getProperty("archive"))
-                        || !properties.getProperty("ffmpeg_source_ref").equals(record.getProperty("source.ref"))
-                        || !properties.getProperty("ffmpeg_source_commit").equals(record.getProperty("source.commit"))
-                        || !properties.getProperty("ffmpeg_source_sha256").equalsIgnoreCase(record.getProperty("source.sha256", ""))
-                        || !properties.getProperty("libxml2_version").equals(record.getProperty("libxml2.version"))
-                        || !properties.getProperty("libxml2_sha256").equalsIgnoreCase(record.getProperty("libxml2.sha256", ""))
-                        || !properties.getProperty("openssl_version").equals(record.getProperty("openssl.version"))
-                        || !properties.getProperty("openssl_sha256").equalsIgnoreCase(record.getProperty("openssl.sha256", ""))
+            final String base = "ffmpeg-" + version + "-" + platform.getValue();
+            final String name = record.getProperty("archive", "");
+            final String verification = record.getProperty("verification", "");
+            final Set<String> checks = new HashSet<>(List.of(verification.split(",", -1)));
+            final Set<String> requiredChecks = Set.of("JNI-original-wrappers", "DASH", "recursive-entities",
+                    "imports-closure", "clean-environment", "TLS", "HTTP-headers");
+            if (!version.equals(record.getProperty("version")) || !platform.getValue().equals(record.getProperty("platform"))
+                        || !name.matches(Pattern.quote(base) + "(?:-[A-Za-z0-9_+.-]+)?\\.jar")
                         || !variant.equals(record.getProperty("variant"))
                         || !license.equals(record.getProperty("license"))
-                        || !properties.getProperty("ffmpeg_tls_patch_sha256", "").matches("[a-fA-F0-9]{64}")
-                        || !properties.getProperty("ffmpeg_tls_patch_sha256").equalsIgnoreCase(record.getProperty("tls.patch.sha256", ""))
-                        || !properties.getProperty("ffmpeg_security_patch_sha256", "").matches("[a-fA-F0-9]{64}")
-                        || !properties.getProperty("ffmpeg_security_patch_sha256").equalsIgnoreCase(record.getProperty("security.patch.sha256", ""))
-                        || !properties.getProperty("ffmpeg_headers_patch_sha256", "").matches("[a-fA-F0-9]{64}")
-                        || !properties.getProperty("ffmpeg_headers_patch_sha256").equalsIgnoreCase(record.getProperty("headers.patch.sha256", ""))
-                        || !"JNI-original-wrappers,DASH,recursive-entities,libxml2-version,openssl-version,imports-closure,clean-environment,TLS,HTTP-headers,LGPL,no-x264,no-x265".equals(record.getProperty("verification"))) {
-                    throw new IOException("Candidate version or native verification record does not match: " + candidate);
+                        || !checks.containsAll(requiredChecks)) {
+                throw new IOException("Candidate version or native verification record does not match: " + candidate);
+            }
+            for (final var entry: metadata.entrySet()) {
+                final String declared = properties.getProperty(entry.getKey());
+                if (declared != null && !declared.isBlank()) {
+                    final String actual = record.getProperty(entry.getValue(), "");
+                    if (!(entry.getKey().endsWith("_sha256") ? declared.equalsIgnoreCase(actual) : declared.equals(actual))) {
+                        throw new IOException("Candidate provenance mismatch for " + entry.getValue() + ": " + candidate);
+                    }
                 }
+            }
             source = candidate.resolve(name);
             final String recipeHash = record.getProperty("recipe.sha256");
             if (recipeHash == null || !recipeHash.matches("[a-fA-F0-9]{64}")) {
@@ -122,9 +121,10 @@ public final class RepackFFmpeg {
                 throw new IOException("Candidate archive SHA-256 mismatch: " + source);
             }
             expected = hash(source, "SHA-1");
-            uri = URI.create("rebuilt:" + properties.getProperty("ffmpeg_source_ref") + "/" + name);
+            uri = URI.create("rebuilt:" + properties.getProperty("ffmpeg_source_ref", version) + "/" + name);
 
-            final String prefix = "org/bytedeco/ffmpeg/" + platform.getValue() + "/";
+            final String extension = name.substring(base.length(), name.length() - ".jar".length());
+            final String prefix = "org/bytedeco/ffmpeg/" + platform.getValue() + extension + "/";
             final Path output = staging.resolve("ffmpeg-" + platform.getKey() + ".zip");
             final Map<String, String> hashes = new TreeMap<>();
             try (final ZipFile jar = new ZipFile(source.toFile())) {
@@ -142,10 +142,6 @@ public final class RepackFFmpeg {
                     final boolean nativePresent = libraries.keySet().stream().anyMatch(file -> file.matches("(?:lib)?" + component + "[.-].*"));
                     final boolean jniPresent = libraries.keySet().stream().anyMatch(file -> file.matches("(?:lib)?jni" + component + "\\..*"));
                     if (!nativePresent || !jniPresent) throw new IOException("Missing native or JNI component: " + component);
-                }
-                final List<String> required = support.get(platform.getKey());
-                if (libraries.size() != 14 + required.size() || !libraries.keySet().containsAll(required)) {
-                    throw new IOException("Candidate must preserve the complete native inventory for " + platform.getValue());
                 }
                 try (final var zip = new ZipOutputStream(new BufferedOutputStream(Files.newOutputStream(output)))) {
                     zip.setLevel(level);

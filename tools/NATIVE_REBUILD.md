@@ -5,15 +5,20 @@ The original Maven `8.1.2-1.5.14` classifiers contain statically linked libxml2 
 libxml2 2.15.4 and OpenSSL 3.5.8. The annotated tag object, source archive hashes and native dependency
 versions are pinned in `gradle.properties`; the source archive resolves to preset commit
 `d57d8a28635211e174df378611cb1952f751c943`.
-The recipe removes x264 and x265 variables, downloads, extraction and all 13 platform build blocks. It
-never passes `--enable-gpl`; `--enable-version3` remains required by the enabled Apache-licensed codecs.
+The default LGPL recipe removes x264 and x265 variables, downloads, extraction and all 13 platform build
+blocks. It never passes `--enable-gpl`; `--enable-version3` remains required by the enabled dependencies.
+To select GPL, set `ffmpeg_variant=gpl` and the corresponding `ffmpeg_license` in `gradle.properties`.
+That profile retains x264/x265 and the upstream GPL Maven profile, and produces the `-gpl` classifier.
+Both profiles keep the native integrity and behavior checks. Other build versions require matching
+JavaCPP sources, bindings and checksums; runtime loading does not impose a fixed version or license.
 The checksum-pinned TLS patch enables certificate verification by default, verifies IP identities,
 and preserves trust options through HTTP, HLS and DASH, including manifests read from local files.
 The separate `ffmpeg-security.patch` backports the reviewed upstream fixes listed below while retaining
-FFmpeg 8.1.2 and the original JavaCPP API. Its independent SHA-256 is mandatory in build and repack records.
+FFmpeg 8.1.2 and the original JavaCPP API. Its SHA-256 is mandatory when this patch is declared by the recipe.
 The third `ffmpeg-headers.patch` binds sensitive HTTP headers to their original request origin across
-redirects and nested streams. Its separate checksum and verification result are also mandatory;
-candidates produced before this protection cannot replace the distributed archives.
+redirects and nested streams. Its separate checksum is required for candidates using this recipe.
+Custom candidates may supply equivalent capabilities through different sources; the packer checks
+the declared provenance and artifact hashes, while native behavior must be verified on its target platform.
 `Authorization`, `Proxy-Authorization`, `Cookie`, `Cookie2` and `X-WaterMedia-Token` are retained only
 for the original origin. Foreign requests regenerate `Host` and cannot send or collect its cookies;
 same-origin requests retain the caller's headers.
@@ -42,8 +47,8 @@ running a native compiler. `-VerifyOnly` validates an already built classifier w
 The build preserves the upstream codec and hardware configuration, and adds no DASH format restriction.
 VDPAU remains disabled as in the original Linux classifiers, keeping their existing system-library contract.
 
-Maven runs the complete JavaCPP preset in three phases: compile and install LGPL FFmpeg with its static
-non-GPL codec dependencies, parse its headers, then compile all seven JNI libraries with `copyLibs` and
+Maven runs the complete JavaCPP preset in three phases: compile and install the selected FFmpeg profile
+with its static codec dependencies, parse its headers, then compile all seven JNI libraries with `copyLibs` and
 `copyResources`. A standalone FFmpeg CLI build cannot replace these classifier JARs. Linux preparation
 also provides pinned Vulkan headers and the ARM64 Raspberry Pi userland expected by the original preset.
 On macOS, the GCC library directory is passed directly to Maven so JavaCPP packages `libatomic`.
@@ -53,8 +58,8 @@ library directories to JavaCPP so VA, VA-DRM and DRM are included in the archive
 
 Before a candidate is exported, the script generates a local H.264 DASH fixture and launches a fresh
 Java process using the original, checksum-pinned Maven Java wrappers. It must load all seven JNI
-components, confirm all seven licenses and build configurations are LGPLv3 without x264/x265, identify
-the expected embedded libxml2 and OpenSSL versions, encode the fixture with OpenH264, parse the DASH
+components, confirm the selected recipe's actual licenses, flags and encoders, identify
+the expected embedded libxml2 and OpenSSL versions, encode the fixture with OpenH264 for LGPL or x264 for GPL, parse the DASH
 fixture and reject a recursive-entity manifest. This process receives only the packaged native
 directory, JDK and operating-system paths; compiler directories and inherited Java options are removed.
 PE, ELF or Mach-O imports must resolve to packaged libraries or the explicit operating-system allowlist.
@@ -90,7 +95,7 @@ Its platform selector can retry one failed target while the other builds continu
 upload separate `unverified-ffmpeg-*` diagnostics containing intermediate JARs, the CLI and build logs.
 These lack the successful verification record and must never replace the distributed libraries.
 An `all` run repacks only after every matrix target succeeds. It downloads each verified artifact into
-its own platform directory, validates the five records as one set and uploads the completed `ffmpeg-lgpl`
+its own platform directory, validates the five records as one set and uploads the completed `ffmpeg-native`
 resource bundle. Single-platform retries stop after uploading their candidate.
 All five candidates must pass before replacing the distributed native set. Updating a recipe does
 not change the currently bundled ZIPs by itself; the source manifest must match any replaced archives.

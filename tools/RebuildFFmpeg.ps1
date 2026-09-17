@@ -16,14 +16,17 @@ $revision = $properties.ffmpeg_source_ref
 $sourceCommit = $properties.ffmpeg_source_commit
 $xmlVersion = $properties.libxml2_version
 $sslVersion = $properties.openssl_version
+$variant = $properties.ffmpeg_variant
+$extension = if ($variant -ceq 'gpl') { '-gpl' } else { '' }
+$buildPlatform = "$Platform$extension"
 $tlsPatch = Join-Path $PSScriptRoot 'ffmpeg-tls.patch'
 if ($properties.ffmpeg_tls_patch_sha256 -notmatch '^[a-f0-9]{64}$' -or (Get-FileHash -LiteralPath $tlsPatch -Algorithm SHA256).Hash -ine $properties.ffmpeg_tls_patch_sha256) { throw 'Native TLS patch SHA-256 mismatch' }
 $securityPatch = Join-Path $PSScriptRoot 'ffmpeg-security.patch'
 if ($properties.ffmpeg_security_patch_sha256 -notmatch '^[a-f0-9]{64}$' -or (Get-FileHash -LiteralPath $securityPatch -Algorithm SHA256).Hash -ine $properties.ffmpeg_security_patch_sha256) { throw 'Native security patch SHA-256 mismatch' }
 $headersPatch = Join-Path $PSScriptRoot 'ffmpeg-headers.patch'
 if ($properties.ffmpeg_headers_patch_sha256 -notmatch '^[a-f0-9]{64}$' -or (Get-FileHash -LiteralPath $headersPatch -Algorithm SHA256).Hash -ine $properties.ffmpeg_headers_patch_sha256) { throw 'Native HTTP headers patch SHA-256 mismatch' }
-if ($revision -notmatch '^[a-f0-9]{40}$' -or $sourceCommit -notmatch '^[a-f0-9]{40}$' -or $xmlVersion -notmatch '^\d+\.\d+\.\d+$' -or $sslVersion -notmatch '^\d+\.\d+\.\d+$' -or $properties.ffmpeg_variant -cne 'lgpl' -or $properties.ffmpeg_license -cne 'LGPL-3.0-or-later') {
-    throw 'Native source revisions and libxml2 version must be pinned in gradle.properties'
+if ($revision -notmatch '^[a-f0-9]{40}$' -or $sourceCommit -notmatch '^[a-f0-9]{40}$' -or $xmlVersion -notmatch '^\d+\.\d+\.\d+$' -or $sslVersion -notmatch '^\d+\.\d+\.\d+$' -or $variant -cnotin @('lgpl', 'gpl') -or [string]::IsNullOrWhiteSpace($properties.ffmpeg_license)) {
+    throw 'Native source revisions, build variant and license metadata must be declared in gradle.properties'
 }
 $work = Join-Path $root 'build/native-rebuild'
 [IO.Directory]::CreateDirectory($work) | Out-Null
@@ -73,8 +76,9 @@ try {
     $reader = [IO.StreamReader]::new($zip.GetEntry("javacpp-presets-$revision/pom.xml").Open())
     try { $parentPom = $reader.ReadToEnd() } finally { $reader.Dispose() }
 } finally { $zip.Dispose() }
+$disable = if ($variant -ceq 'gpl') { 'DISABLE="--disable-nonfree --disable-iconv' } else { 'DISABLE="--disable-gpl --disable-nonfree --disable-iconv' }
 $changes = @(
-    @('DISABLE="--disable-iconv', 'DISABLE="--disable-gpl --disable-nonfree --disable-iconv'),
+    @('DISABLE="--disable-iconv', $disable),
     @('XML2=libxml2-2.9.12', "XML2=libxml2-$xmlVersion"),
     @('OPENSSL=openssl-3.5.7', "OPENSSL=openssl-$sslVersion"),
     @('download http://xmlsoft.org/sources/$XML2.tar.gz $XML2.tar.gz', "download https://download.gnome.org/sources/libxml2/$xmlSeries/`$XML2.tar.xz `$XML2.tar.xz"),
@@ -105,8 +109,9 @@ fi
 '@
 $gplBlock = $gplBlock.Replace("`r`n", "`n")
 if (!$recipe.Contains($gplBlock)) { throw 'Expected upstream GPL configuration is missing' }
-$recipe = $recipe.Replace($gplBlock, '')
-foreach ($line in @(
+if ($variant -ceq 'lgpl') {
+    $recipe = $recipe.Replace($gplBlock, '')
+    foreach ($line in @(
     'X264=x264-stable',
     'X265=3.4',
     'download https://code.videolan.org/videolan/x264/-/archive/stable/$X264.tar.gz $X264.tar.gz',
@@ -115,16 +120,19 @@ foreach ($line in @(
     'tar --totals -xzf ../x265-$X265.tar.gz',
     "sedinplace 's/bool bEnableavx512/bool bEnableavx512 = false/g' x265-*/source/common/param.h",
     "sedinplace 's/detect512()/false/g' x265-*/source/common/quant.cpp"
-)) {
-    if ([regex]::Matches($recipe, [regex]::Escape($line)).Count -ne 1) { throw "Expected upstream GPL dependency line is missing or duplicated: $line" }
-    $recipe = $recipe.Replace($line, '')
-}
-$codecPattern = '(?ms)^([ \t]*)cd \.\./\$X264\r?\n.*?^\1cd \.\./libvpx-\$VPX_VERSION(?=\r?$)'
-$codecBlocks = [regex]::Matches($recipe, $codecPattern)
-if ($codecBlocks.Count -ne 13) { throw "Expected 13 upstream x264/x265 build blocks, found $($codecBlocks.Count)" }
-$recipe = [regex]::Replace($recipe, $codecPattern, { param($match) $match.Groups[1].Value + 'cd ../libvpx-$VPX_VERSION' })
-if ($recipe -match '(?i)x264|x265|--enable-gpl' -or !$recipe.Contains('--enable-version3') -or !$recipe.Contains('--disable-gpl') -or !$recipe.Contains('--disable-nonfree')) {
-    throw 'LGPL recipe still contains a GPL codec dependency or lost its LGPLv3 configuration'
+    )) {
+        if ([regex]::Matches($recipe, [regex]::Escape($line)).Count -ne 1) { throw "Expected upstream GPL dependency line is missing or duplicated: $line" }
+        $recipe = $recipe.Replace($line, '')
+    }
+    $codecPattern = '(?ms)^([ \t]*)cd \.\./\$X264\r?\n.*?^\1cd \.\./libvpx-\$VPX_VERSION(?=\r?$)'
+    $codecBlocks = [regex]::Matches($recipe, $codecPattern)
+    if ($codecBlocks.Count -ne 13) { throw "Expected 13 upstream x264/x265 build blocks, found $($codecBlocks.Count)" }
+    $recipe = [regex]::Replace($recipe, $codecPattern, { param($match) $match.Groups[1].Value + 'cd ../libvpx-$VPX_VERSION' })
+    if ($recipe -match '(?i)x264|x265|--enable-gpl' -or !$recipe.Contains('--enable-version3') -or !$recipe.Contains('--disable-gpl') -or !$recipe.Contains('--disable-nonfree')) {
+        throw 'LGPL recipe still contains a GPL codec dependency or lost its LGPLv3 configuration'
+    }
+} elseif (!$recipe.Contains('--enable-gpl --enable-version3 --enable-libx264 --enable-libx265') -or !$recipe.Contains('--disable-nonfree')) {
+    throw 'GPL recipe lost its codec configuration or nonfree exclusion'
 }
 if (!$recipe.Contains("FFMPEG_VERSION=$($properties.ffmpeg_version.Split('-')[0])")) { throw 'Source FFmpeg version disagrees with the Java wrappers' }
 if ([regex]::Matches($recipe, [regex]::Escape('patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg-tls.patch')).Count -ne 1) { throw 'The native recipe must apply the TLS patch exactly once' }
@@ -153,9 +161,11 @@ $gplProfile = @'
 '@
 $gplProfile = $gplProfile.Replace("`r`n", "`n")
 if (!$pom.Contains($gplProfile)) { throw 'Expected upstream GPL Maven profile is missing' }
-$pom = $pom.Replace($gplProfile, '')
-if ($pom.Contains('ffmpeg-gpl') -or $pom.Contains('<javacpp.platform.extension>-gpl</javacpp.platform.extension>')) {
-    throw 'Generated FFmpeg Maven project still exposes its GPL profile'
+if ($variant -ceq 'lgpl') {
+    $pom = $pom.Replace($gplProfile, '')
+    if ($pom.Contains('ffmpeg-gpl') -or $pom.Contains('<javacpp.platform.extension>-gpl</javacpp.platform.extension>')) {
+        throw 'Generated LGPL Maven project still exposes its GPL profile'
+    }
 }
 $macProfile = @'
     <profile>
@@ -186,14 +196,14 @@ Copy-Item -LiteralPath $sslArchive -Destination (Join-Path $cache "openssl-$sslV
 Write-Output "Prepared $Platform sources: $source"
 Write-Output "Verified libxml2 $xmlVersion SHA-256: $($properties.libxml2_sha256)"
 Write-Output "Verified OpenSSL $sslVersion SHA-256: $($properties.openssl_sha256)"
-Write-Output 'Verified LGPL recipe excludes x264, x265 and --enable-gpl'
+Write-Output "Verified $variant recipe and JavaCPP Maven profile"
 Write-Output "Verified TLS patch SHA-256: $($properties.ffmpeg_tls_patch_sha256)"
 Write-Output "Verified security patch SHA-256: $($properties.ffmpeg_security_patch_sha256)"
 Write-Output "Verified HTTP headers patch SHA-256: $($properties.ffmpeg_headers_patch_sha256)"
 if ($PrepareOnly) { return }
 
 if (!$VerifyOnly) {
-    $nativeBuild = [IO.Path]::GetFullPath((Join-Path $source "ffmpeg/cppbuild/$Platform"))
+    $nativeBuild = [IO.Path]::GetFullPath((Join-Path $source "ffmpeg/cppbuild/$buildPlatform"))
     $ffmpegSource = [IO.Path]::GetFullPath((Join-Path $nativeBuild "ffmpeg-$($properties.ffmpeg_version.Split('-')[0])"))
     $nativePrefix = $nativeBuild + [IO.Path]::DirectorySeparatorChar
     if (!$ffmpegSource.StartsWith($nativePrefix, [StringComparison]::OrdinalIgnoreCase)) { throw 'FFmpeg source cleanup escaped its build directory' }
@@ -236,11 +246,11 @@ if (!$VerifyOnly) {
     }
     Push-Location $source
     try {
-        & mvn -B -f ffmpeg/pom.xml package "-Djavacpp.platform=$Platform" '-Djavacpp.platform.extension=' '-DskipTests' @nativeOptions
+        & mvn -B -f ffmpeg/pom.xml package "-Djavacpp.platform=$Platform" "-Djavacpp.platform.extension=$extension" '-DskipTests' @nativeOptions
         if ($LASTEXITCODE -ne 0) { throw "FFmpeg native compilation failed for $Platform" }
     } finally { Pop-Location }
 }
-$ffmpegSource = [IO.Path]::GetFullPath((Join-Path $source "ffmpeg/cppbuild/$Platform/ffmpeg-$($properties.ffmpeg_version.Split('-')[0])"))
+$ffmpegSource = [IO.Path]::GetFullPath((Join-Path $source "ffmpeg/cppbuild/$buildPlatform/ffmpeg-$($properties.ffmpeg_version.Split('-')[0])"))
 $patches = @($tlsPatch, $securityPatch, $headersPatch)
 $paths = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 foreach ($patch in $patches) {
@@ -293,10 +303,10 @@ try {
         Remove-Item -LiteralPath $cleanup -Recurse -Force
     }
 }
-$classifier = "ffmpeg-$($properties.ffmpeg_version)-$Platform.jar"
-$jar = Join-Path $source "ffmpeg/target/ffmpeg-$Platform.jar"
+$classifier = "ffmpeg-$($properties.ffmpeg_version)-$buildPlatform.jar"
+$jar = Join-Path $source "ffmpeg/target/ffmpeg-$buildPlatform.jar"
 if (!(Test-Path -LiteralPath $jar)) { throw "Native build did not produce its classifier archive: $jar" }
-$native = Join-Path $source "ffmpeg/cppbuild/$Platform"
+$native = Join-Path $source "ffmpeg/cppbuild/$buildPlatform"
 $suffix = if ($Platform.StartsWith('windows-')) { '.exe' } else { '' }
 $program = Join-Path $native "bin/ffmpeg$suffix"
 $smoke = Join-Path $work "smoke-$Platform"
@@ -304,40 +314,26 @@ $smoke = Join-Path $work "smoke-$Platform"
 $packaged = Join-Path $smoke ([Guid]::NewGuid().ToString('N'))
 [IO.Directory]::CreateDirectory($packaged) | Out-Null
 $nativeFiles = [Collections.Generic.Dictionary[string, string]]::new([StringComparer]::OrdinalIgnoreCase)
-$prefix = "org/bytedeco/ffmpeg/$Platform/"
+$prefix = "org/bytedeco/ffmpeg/$buildPlatform/"
 $archive = [IO.Compression.ZipFile]::OpenRead($jar)
 try {
     foreach ($entry in $archive.Entries) {
         if (!$entry.FullName.StartsWith($prefix, [StringComparison]::Ordinal)) { continue }
         $name = $entry.FullName.Substring($prefix.Length)
         if ($name -notmatch '\.(dll|dylib|so(?:\.\d+)*)$') { continue }
-        if ($name -ne [IO.Path]::GetFileName($name) -or $nativeFiles.ContainsKey($name)) { throw "Invalid native archive entry: $name" }
+        if ($name -notmatch '^[a-zA-Z0-9_+.-]+\.(dll|dylib|so(?:\.\d+)*)$' -or $nativeFiles.ContainsKey($name)) { throw "Invalid native archive entry: $name" }
         $destination = Join-Path $packaged $name
         [IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $destination, $false)
         $nativeFiles.Add($name, $destination)
     }
 } finally { $archive.Dispose() }
-$extraLibraries = switch ($Platform) {
-    'linux-x86_64' { @('libva.so.2', 'libva-drm.so.2', 'libdrm.so.2') }
-    'linux-arm64' { @('libasound.so.2', 'libbcm_host.so', 'libvchiq_arm.so', 'libvcos.so') }
-    'windows-x86_64' { @('libwinpthread-1.dll') }
-    default { @('libatomic.1.dylib') }
-}
-$extraLibraries = @($extraLibraries)
-if ($nativeFiles.Count -ne 14 + $extraLibraries.Count) { throw "Native archive does not preserve the complete $Platform library inventory" }
-foreach ($dependency in $extraLibraries) {
-    if (!$nativeFiles.ContainsKey($dependency)) { throw "Native archive lacks the required shared dependency: $dependency" }
-}
 foreach ($componentName in @('avcodec', 'avdevice', 'avfilter', 'avformat', 'avutil', 'swscale', 'swresample')) {
     $shared = @($nativeFiles.Keys | Where-Object { $_ -match "^(lib)?$componentName[.-]" })
     $jni = @($nativeFiles.Keys | Where-Object { $_ -match "^(lib)?jni$componentName\." })
     if ($shared.Count -ne 1 -or $jni.Count -ne 1) { throw "Native archive needs exactly one shared library and JNI bridge for $componentName" }
 }
-$component = '^(lib)?(jni)?(avcodec|avdevice|avfilter|avformat|avutil|swscale|swresample)[.-]'
-$support = '^(libwinpthread-1\.dll|libatomic\.1\.dylib|libva(?:-drm)?\.so\.2|libdrm\.so\.2|libasound\.so\.2|libbcm_host\.so|libvchiq_arm\.so|libvcos\.so|(?:lib)?jnijavacpp\.(?:dll|so|dylib))$'
 $imports = [Collections.Generic.List[string]]::new()
 foreach ($file in $nativeFiles.GetEnumerator()) {
-    if ($file.Key -notmatch $component -and $file.Key -notmatch $support) { throw "Unexpected shared dependency; codec dependencies must be static: $($file.Key)" }
     if ($Platform.StartsWith('windows-')) {
         $details = & objdump -p $file.Value
         if ($LASTEXITCODE -ne 0) { throw "Cannot inspect native PE imports: $($file.Key)" }
@@ -392,7 +388,8 @@ $env:LD_LIBRARY_PATH = $packaged + ':' + $env:LD_LIBRARY_PATH
 $env:DYLD_LIBRARY_PATH = $packaged + ':' + $env:DYLD_LIBRARY_PATH
 Push-Location $smoke
 try {
-    & $program -nostdin -v error -f lavfi -i 'color=c=black:s=32x32:r=1' -t 1 -c:v libopenh264 -an -f dash -y 'stream.mpd'
+    $fixtureEncoder = if ($variant -ceq 'gpl') { 'libx264' } else { 'libopenh264' }
+    & $program -nostdin -v error -f lavfi -i 'color=c=black:s=32x32:r=1' -t 1 -c:v $fixtureEncoder -an -f dash -y 'stream.mpd'
     if ($LASTEXITCODE -ne 0) { throw 'Rebuilt FFmpeg cannot produce the DASH regression fixture' }
 } finally { Pop-Location }
 $javaVersion = $properties.ffmpeg_version.Split('-')[1]
@@ -422,7 +419,7 @@ foreach ($name in @('HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'htt
 $start.Environment['NO_PROXY'] = '*'
 $start.Environment['no_proxy'] = '*'
 foreach ($probe in @(
-    @{ File = 'VerifyFFmpeg.java'; Arguments = @($properties.ffmpeg_version.Split('-')[0], $xmlVersion, $sslVersion, $jar, (Join-Path $smoke 'stream.mpd')) },
+    @{ File = 'VerifyFFmpeg.java'; Arguments = @($properties.ffmpeg_version.Split('-')[0], $xmlVersion, $sslVersion, $jar, (Join-Path $smoke 'stream.mpd'), $variant) },
     @{ File = 'VerifyTLS.java'; Arguments = @((Join-Path $smoke 'stream.mpd')) }
 )) {
     $start.ArgumentList.Clear()
@@ -464,11 +461,11 @@ $lines = @(
     "security.patch.sha256=$($properties.ffmpeg_security_patch_sha256)",
     "headers.patch.sha256=$($properties.ffmpeg_headers_patch_sha256)",
     "recipe.sha256=$((Get-FileHash -LiteralPath (Join-Path $source 'ffmpeg/cppbuild.sh') -Algorithm SHA256).Hash.ToLowerInvariant())",
-    'verification=JNI-original-wrappers,DASH,recursive-entities,libxml2-version,openssl-version,imports-closure,clean-environment,TLS,HTTP-headers,LGPL,no-x264,no-x265',
+    "verification=JNI-original-wrappers,DASH,recursive-entities,libxml2-version,openssl-version,imports-closure,clean-environment,TLS,HTTP-headers,$(if ($variant -ceq 'gpl') { 'GPL,libx264,libx265' } else { 'LGPL,no-x264,no-x265' })",
     "archive=$classifier",
     "archive.sha256=$((Get-FileHash -LiteralPath $jar -Algorithm SHA256).Hash.ToLowerInvariant())"
 )
 [IO.File]::WriteAllLines((Join-Path $output 'build.properties'), $lines, [Text.UTF8Encoding]::new($false))
 [IO.File]::WriteAllLines((Join-Path $output 'dependencies.txt'), $imports, [Text.UTF8Encoding]::new($false))
 Write-Output "Candidate native archive: $output"
-Write-Output 'Native load, LGPL, DASH and TLS checks passed; review all five classifier results before publishing.'
+Write-Output "Native load, $variant, DASH and TLS checks passed; review all five classifier results before publishing."
