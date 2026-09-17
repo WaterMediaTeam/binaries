@@ -10,6 +10,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Properties;
 import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
 import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.*;
@@ -19,8 +20,8 @@ class RepackToolTest {
     @TempDir Path directory;
 
     @Test
-    void officialDownloadCannotReplaceAnInstalledSecurityRebuild() throws Exception {
-        Files.writeString(this.directory.resolve("gradle.properties"), "ffmpeg_version=8.1.2-1.5.14\nffmpeg_compression=9\n");
+    void missingCandidatesCannotReplaceAnInstalledSecurityRebuild() throws Exception {
+        Files.writeString(this.directory.resolve("gradle.properties"), "ffmpeg_version=8.1.2-1.5.14\nffmpeg_variant=lgpl\nffmpeg_license=LGPL-3.0-or-later\nffmpeg_compression=9\n");
         Files.createDirectories(this.directory.resolve("tools"));
         Files.writeString(this.directory.resolve("tools/ffmpeg-manifest.properties"), "source.kind=rebuilt\n");
         final Path output = this.directory.resolve("process.log");
@@ -29,8 +30,37 @@ class RepackToolTest {
         try {
             assertTrue(process.waitFor(20, TimeUnit.SECONDS));
             assertNotEquals(0, process.exitValue());
-            assertTrue(Files.readString(output).contains("preserve the installed native security rebuild"));
+            assertTrue(Files.readString(output).contains("Usage: RepackFFmpeg <binaries-root> <verified-candidate-directory>"));
             assertFalse(Files.exists(this.directory.resolve("src/main/resources/libs")));
+        } finally {
+            process.destroyForcibly();
+        }
+    }
+
+    @Test
+    void lgplCandidatesProduceCompleteManifestAndMarkers() throws Exception {
+        final Path candidates = this.candidates(false, false);
+        final Path output = this.directory.resolve("process.log");
+        final var process = new ProcessBuilder(java(), Path.of("tools/RepackFFmpeg.java").toAbsolutePath().toString(), this.directory.toString(), candidates.toString())
+                .redirectErrorStream(true).redirectOutput(output.toFile()).start();
+        try {
+            assertTrue(process.waitFor(20, TimeUnit.SECONDS));
+            assertEquals(0, process.exitValue(), Files.readString(output));
+            final Properties manifest = new Properties();
+            try (final var input = Files.newInputStream(this.directory.resolve("tools/ffmpeg-manifest.properties"))) { manifest.load(input); }
+            assertEquals("lgpl", manifest.getProperty("variant"));
+            assertEquals("LGPL-3.0-or-later", manifest.getProperty("license"));
+            assertEquals("rebuilt", manifest.getProperty("source.kind"));
+            for (final String archive: ARCHIVES) {
+                assertFalse(manifest.getProperty(archive + ".source").contains("-gpl"));
+                try (final var zip = new ZipFile(this.directory.resolve("src/main/resources/libs/ffmpeg-" + archive + ".zip").toFile())) {
+                    final var entries = zip.stream().toList();
+                    assertEquals("version.cfg", entries.get(entries.size() - 1).getName());
+                    try (final var input = zip.getInputStream(entries.get(entries.size() - 1))) {
+                        assertEquals("8.1.2-1.5.14", new String(input.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+                    }
+                }
+            }
         } finally {
             process.destroyForcibly();
         }
@@ -124,6 +154,29 @@ class RepackToolTest {
         }
     }
 
+    @Test
+    void gplCandidateCannotReplaceInstalledArchives() throws Exception {
+        final Path candidates = this.candidates(false, false);
+        final Path recordPath = candidates.resolve("linux-x86_64/build.properties");
+        final Properties record = new Properties();
+        try (final var input = Files.newInputStream(recordPath)) { record.load(input); }
+        record.setProperty("variant", "gpl");
+        record.setProperty("license", "GPL-3.0-or-later");
+        try (final var output = Files.newOutputStream(recordPath)) { record.store(output, null); }
+        final Path output = this.directory.resolve("process.log");
+        final var process = new ProcessBuilder(java(), Path.of("tools/RepackFFmpeg.java").toAbsolutePath().toString(), this.directory.toString(), candidates.toString())
+                .redirectErrorStream(true).redirectOutput(output.toFile()).start();
+        try {
+            assertTrue(process.waitFor(20, TimeUnit.SECONDS));
+            assertNotEquals(0, process.exitValue());
+            assertTrue(Files.readString(output).contains("Candidate version or native verification record does not match"));
+            for (final String archive: ARCHIVES)
+                assertEquals("existing " + archive, Files.readString(this.directory.resolve("src/main/resources/libs/ffmpeg-" + archive + ".zip")));
+        } finally {
+            process.destroyForcibly();
+        }
+    }
+
     private Path candidates(final boolean invalidFinal, final boolean missingLinuxDependencies) throws Exception {
         Files.copy(Path.of("gradle.properties"), this.directory.resolve("gradle.properties"));
         final Properties properties = new Properties();
@@ -141,7 +194,7 @@ class RepackToolTest {
             Files.writeString(resources.resolve("ffmpeg-" + ARCHIVES[i] + ".zip"), "existing " + ARCHIVES[i]);
             final String platform = platforms[i];
             final Path candidate = Files.createDirectory(candidates.resolve(platform));
-            final String name = "ffmpeg-" + properties.getProperty("ffmpeg_version") + "-" + platform + "-gpl.jar";
+            final String name = "ffmpeg-" + properties.getProperty("ffmpeg_version") + "-" + platform + ".jar";
             final Path jar = candidate.resolve(name);
             final String extension = platform.startsWith("windows-") ? ".dll" : platform.startsWith("macosx-") ? ".dylib" : ".so";
             final List<String> libraries = new ArrayList<>();
@@ -152,7 +205,7 @@ class RepackToolTest {
             if (i != 0 || !missingLinuxDependencies) libraries.addAll(List.of(support[i]));
             try (final var output = new ZipOutputStream(Files.newOutputStream(jar))) {
                 for (final String library: libraries) {
-                    output.putNextEntry(new ZipEntry("org/bytedeco/ffmpeg/" + platform + "-gpl/" + library));
+                    output.putNextEntry(new ZipEntry("org/bytedeco/ffmpeg/" + platform + "/" + library));
                     output.write(library.getBytes(java.nio.charset.StandardCharsets.UTF_8));
                     output.closeEntry();
                 }
@@ -162,7 +215,10 @@ class RepackToolTest {
             record.setProperty("platform", platform);
             record.setProperty("archive", name);
             record.setProperty("archive.sha256", HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(jar))));
+            record.setProperty("variant", properties.getProperty("ffmpeg_variant"));
+            record.setProperty("license", properties.getProperty("ffmpeg_license"));
             record.setProperty("source.ref", properties.getProperty("ffmpeg_source_ref"));
+            record.setProperty("source.commit", properties.getProperty("ffmpeg_source_commit"));
             record.setProperty("source.sha256", properties.getProperty("ffmpeg_source_sha256"));
             record.setProperty("libxml2.version", properties.getProperty("libxml2_version"));
             record.setProperty("libxml2.sha256", properties.getProperty("libxml2_sha256"));
@@ -173,7 +229,7 @@ class RepackToolTest {
             record.setProperty("headers.patch.sha256", properties.getProperty("ffmpeg_headers_patch_sha256"));
             record.setProperty("recipe.sha256", "0".repeat(64));
             record.setProperty("verification", invalidFinal && i == platforms.length - 1 ? "missing-TLS"
-                    : "JNI-original-wrappers,DASH,recursive-entities,libxml2-version,openssl-version,imports-closure,clean-environment,TLS,HTTP-headers");
+                    : "JNI-original-wrappers,DASH,recursive-entities,libxml2-version,openssl-version,imports-closure,clean-environment,TLS,HTTP-headers,LGPL,no-x264,no-x265");
             try (final var output = Files.newOutputStream(candidate.resolve("build.properties"))) { record.store(output, null); }
         }
         return candidates;

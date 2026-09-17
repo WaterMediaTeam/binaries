@@ -88,10 +88,10 @@ jobs:
         with:
           name: unverified-ffmpeg-${{ matrix.platform }}
           path: |
-            build/native-rebuild/src/*/ffmpeg/target/ffmpeg-*-gpl.jar
-            build/native-rebuild/src/*/ffmpeg/cppbuild/*-gpl/bin/ffmpeg*
-            build/native-rebuild/src/*/ffmpeg/cppbuild/*-gpl/ffmpeg-*/ffbuild/config.log
-            build/native-rebuild/src/*/ffmpeg/cppbuild/*-gpl/libxml2-*/config.log
+            build/native-rebuild/src/*/ffmpeg/target/ffmpeg-${{ matrix.platform }}.jar
+            build/native-rebuild/src/*/ffmpeg/cppbuild/${{ matrix.platform }}/bin/ffmpeg*
+            build/native-rebuild/src/*/ffmpeg/cppbuild/${{ matrix.platform }}/ffmpeg-*/ffbuild/config.log
+            build/native-rebuild/src/*/ffmpeg/cppbuild/${{ matrix.platform }}/libxml2-*/config.log
             build/native-rebuild/src/*/ffmpeg/cppbuild.sh
             build/native-rebuild/src/*/pom.xml
             build/native-rebuild/smoke-*/*.mpd
@@ -153,7 +153,7 @@ jobs:
       - name: Upload verified native archives
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: ffmpeg-gpl
+          name: ffmpeg-lgpl
           path: |
             src/main/resources/libs/ffmpeg-*.zip
             tools/ffmpeg-manifest.properties

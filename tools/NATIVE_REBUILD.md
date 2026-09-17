@@ -1,11 +1,12 @@
 # Native rebuilds
 
-The Maven `8.1.2-1.5.14` GPL classifiers contain statically linked libxml2 2.9.12 and OpenSSL 3.5.7.
-`RebuildFFmpeg.ps1` retains the FFmpeg/JavaCPP coordinate and prepares the tagged JavaCPP recipe with
-libxml2 2.15.4 and OpenSSL 3.5.8. The source commit, source archive hashes, x264 revision and native
-dependency versions are pinned in `gradle.properties`.
-The pinned x264 commit is fetched from its GitHub mirror with a required archive hash; its bytes match
-the source already used by the native builds.
+The original Maven `8.1.2-1.5.14` classifiers contain statically linked libxml2 2.9.12 and OpenSSL 3.5.7.
+`RebuildFFmpeg.ps1` retains the FFmpeg/JavaCPP coordinate and prepares the suffix-free LGPL recipe with
+libxml2 2.15.4 and OpenSSL 3.5.8. The annotated tag object, source archive hashes and native dependency
+versions are pinned in `gradle.properties`; the source archive resolves to preset commit
+`d57d8a28635211e174df378611cb1952f751c943`.
+The recipe removes x264 and x265 variables, downloads, extraction and all 13 platform build blocks. It
+never passes `--enable-gpl`; `--enable-version3` remains required by the enabled Apache-licensed codecs.
 The checksum-pinned TLS patch enables certificate verification by default, verifies IP identities,
 and preserves trust options through HTTP, HLS and DASH, including manifests read from local files.
 The separate `ffmpeg-security.patch` backports the reviewed upstream fixes listed below while retaining
@@ -37,8 +38,8 @@ running a native compiler. `-VerifyOnly` validates an already built classifier w
 The build preserves the upstream codec and hardware configuration, and adds no DASH format restriction.
 VDPAU remains disabled as in the original Linux classifiers, keeping their existing system-library contract.
 
-Maven runs the complete JavaCPP preset in three phases: compile and install FFmpeg with its static
-codec dependencies, parse its headers, then compile all seven JNI libraries with `copyLibs` and
+Maven runs the complete JavaCPP preset in three phases: compile and install LGPL FFmpeg with its static
+non-GPL codec dependencies, parse its headers, then compile all seven JNI libraries with `copyLibs` and
 `copyResources`. A standalone FFmpeg CLI build cannot replace these classifier JARs. Linux preparation
 also provides pinned Vulkan headers and the ARM64 Raspberry Pi userland expected by the original preset.
 On macOS, the GCC library directory is passed directly to Maven so JavaCPP packages `libatomic`.
@@ -48,7 +49,8 @@ library directories to JavaCPP so VA, VA-DRM and DRM are included in the archive
 
 Before a candidate is exported, the script generates a local H.264 DASH fixture and launches a fresh
 Java process using the original, checksum-pinned Maven Java wrappers. It must load all seven JNI
-components, find x264/x265, identify the expected embedded libxml2 and OpenSSL versions, parse the DASH
+components, confirm all seven licenses and build configurations are LGPLv3 without x264/x265, identify
+the expected embedded libxml2 and OpenSSL versions, encode the fixture with OpenH264, parse the DASH
 fixture and reject a recursive-entity manifest. This process receives only the packaged native
 directory, JDK and operating-system paths; compiler directories and inherited Java options are removed.
 PE, ELF or Mach-O imports must resolve to packaged libraries or the explicit operating-system allowlist.
@@ -84,7 +86,7 @@ Its platform selector can retry one failed target while the other builds continu
 upload separate `unverified-ffmpeg-*` diagnostics containing intermediate JARs, the CLI and build logs.
 These lack the successful verification record and must never replace the distributed libraries.
 An `all` run repacks only after every matrix target succeeds. It downloads each verified artifact into
-its own platform directory, validates the five records as one set and uploads the completed `ffmpeg-gpl`
+its own platform directory, validates the five records as one set and uploads the completed `ffmpeg-lgpl`
 resource bundle. Single-platform retries stop after uploading their candidate.
 All five candidates must pass before replacing the distributed native set. Updating a recipe does
 not change the currently bundled ZIPs by itself; the source manifest must match any replaced archives.

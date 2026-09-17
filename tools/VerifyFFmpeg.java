@@ -18,9 +18,25 @@ public final class VerifyFFmpeg {
         avfilter.avfilter_version();
         swscale.swscale_version();
         swresample.swresample_version();
-        if (avcodec.avcodec_find_encoder_by_name("libx264") == null || avcodec.avcodec_find_encoder_by_name("libx265") == null) {
-            throw new IllegalStateException("GPL encoders are missing");
+        final String[] licenses = {avutil.avutil_license().getString(), avcodec.avcodec_license().getString(),
+                avformat.avformat_license().getString(), avdevice.avdevice_license().getString(),
+                avfilter.avfilter_license().getString(), swscale.swscale_license().getString(),
+                swresample.swresample_license().getString()};
+        final String[] configurations = {avutil.avutil_configuration().getString(), avcodec.avcodec_configuration().getString(),
+                avformat.avformat_configuration().getString(), avdevice.avdevice_configuration().getString(),
+                avfilter.avfilter_configuration().getString(), swscale.swscale_configuration().getString(),
+                swresample.swresample_configuration().getString()};
+        for (int i = 0; i < licenses.length; i++) {
+            if (!licenses[i].startsWith("LGPL version 3"))
+                throw new IllegalStateException("FFmpeg component " + i + " is not LGPLv3: " + licenses[i]);
+            if (configurations[i].contains("--enable-gpl") || configurations[i].contains("--enable-nonfree")
+                    || configurations[i].contains("--enable-libx264") || configurations[i].contains("--enable-libx265"))
+                throw new IllegalStateException("FFmpeg component " + i + " contains a prohibited build option");
         }
+        if (avcodec.avcodec_find_encoder_by_name("libx264") != null || avcodec.avcodec_find_encoder_by_name("libx265") != null)
+            throw new IllegalStateException("GPL encoders remain registered");
+        if (avcodec.avcodec_find_encoder_by_name("libopenh264") == null)
+            throw new IllegalStateException("The LGPL H.264 fixture encoder is missing");
         final String[] xml = args[1].split("\\.");
         final String expected = Integer.toString(Integer.parseInt(xml[0]) * 10000 + Integer.parseInt(xml[1]) * 100 + Integer.parseInt(xml[2]));
         try (final var archive = new ZipFile(args[3])) {
@@ -92,6 +108,6 @@ public final class VerifyFFmpeg {
                 avformat.avformat_free_context(output);
             }
         }
-        System.out.println("Verified FFmpeg " + version + ", libxml2 " + args[1] + ", OpenSSL " + args[2] + ", seven JNI components, GPL encoders, DASH, malformed XML and MPEG stream-count boundaries");
+        System.out.println("Verified FFmpeg " + version + ", libxml2 " + args[1] + ", OpenSSL " + args[2] + ", seven JNI components, LGPLv3 without x264/x265, DASH, malformed XML and MPEG stream-count boundaries");
     }
 }

@@ -59,7 +59,7 @@ class NativeProvisionTest {
 
     @Test
     void extractionRepairsMissingAndCorruptedLibrariesWithIntactMarker() throws Exception {
-        final var fixture = fixture("8.1.2-1.5.14-gpl", Map.of("native.dll", "native"));
+        final var fixture = fixture("8.1.2-1.5.14", Map.of("native.dll", "native"));
         final Path first = install(fixture);
         assertEquals(first, install(fixture));
         Files.writeString(first.resolve("native.dll"), "broken");
