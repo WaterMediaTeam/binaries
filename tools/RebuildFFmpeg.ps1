@@ -103,6 +103,7 @@ if [[ "$EXTENSION" == *gpl ]]; then
     ENABLE="$ENABLE --enable-gpl --enable-version3 --enable-libx264 --enable-libx265"
 fi
 '@
+$gplBlock = $gplBlock.Replace("`r`n", "`n")
 if (!$recipe.Contains($gplBlock)) { throw 'Expected upstream GPL configuration is missing' }
 $recipe = $recipe.Replace($gplBlock, '')
 foreach ($line in @(
@@ -150,6 +151,7 @@ $gplProfile = @'
       </properties>
     </profile>
 '@
+$gplProfile = $gplProfile.Replace("`r`n", "`n")
 if (!$pom.Contains($gplProfile)) { throw 'Expected upstream GPL Maven profile is missing' }
 $pom = $pom.Replace($gplProfile, '')
 if ($pom.Contains('ffmpeg-gpl') -or $pom.Contains('<javacpp.platform.extension>-gpl</javacpp.platform.extension>')) {
