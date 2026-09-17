@@ -8,8 +8,7 @@ the pre-built FFMPEG natives, their JNI glue and a few extra shared libraries. W
 need to compile or install FFMPEG or any other native application — plug and play as you deserve.
 
 Install it next to WaterMedia; on first launch WaterMedia extracts the natives for your platform and
-loads them automatically. On its own this jar stays dormant: it never touches the game, so it can sit
-in a modpack even before WaterMedia itself is added.
+loads them automatically. This module requires WaterMedia; it has no independent startup lifecycle.
 
 ## 📦 Supported platforms
 | Platform | Architecture | Status |
@@ -50,9 +49,9 @@ to rebuild each supported platform on its matching operating system. Candidate J
 provenance records are collected under `build/rebuilt/<platform>`.
 
 After all five candidates pass, run `java tools/RepackFFmpeg.java . build/rebuilt` with JDK 17 or newer.
-The tool reads the pinned versions, source hashes and compression level from `gradle.properties`, and
-checks the parent WaterMedia FFmpeg version when used as its submodule. It rejects missing or mismatched
-candidate records and refuses to replace a rebuilt distribution with the original Maven classifiers.
+The tool reads the declared build version, license, source hashes and compression level from
+`gradle.properties`. It accepts compatible custom versions and GPL classifiers, while rejecting
+missing or mismatched candidate records. Java/JNI compatibility and verified native capabilities remain required.
 
 Every shared library and JNI dependency is copied into the flat runtime layout; CLI programs are
 excluded. ZIP compression uses DEFLATE level 9, with fixed entry timestamps and ordering. Every output
@@ -61,22 +60,33 @@ is checked against its candidate with CRC and SHA-256 before any resource is rep
 
 Running the `FFmpeg Rebuild` workflow for `all` platforms rebuilds the five candidates, downloads each
 successful matrix artifact into its exact platform directory, repacks the complete set and uploads the
-verified `ffmpeg-lgpl` artifact. A single-platform run uploads only that candidate for diagnosis or retry.
+verified `ffmpeg-native` artifact. A single-platform run uploads only that candidate for diagnosis or retry.
 
 ## Host lifecycle and downloads
 
-This module builds independently of WaterMedia. A host calls `WaterMediaBinaries.resolve(cacheRoot)`,
-then `provision(progress)` when FFmpeg is needed. Configuration and lifecycle decisions belong to
-the host. Call `release()` after consumers stop to clear bindings without deleting loaded native files.
+This module depends on WaterMedia and must be checked out in its `binaries/` subdirectory to build.
+WaterMedia compiles the shared sources together; each distribution JAR contains only its own classes.
+`WaterMedia.start(...)` initializes `WaterMediaBinaries` through the shared module lifecycle after
+configuration is ready, before network, platform and media services. A failed installed module stops
+startup; an absent module is skipped without disabling Java image support. Dedicated servers skip it,
+and disabling FFmpeg skips native extraction.
+`WaterMedia.stop()` clears its bindings after consumers stop, without deleting loaded native files.
 Each FFmpeg startup verifies every installed library against the bundled SHA-256 manifest. Repairs
 and upgrades create a separate installation and publish it only after complete verification.
+
+Runtime loading does not restrict the declared license or build version. The supplied recipe defaults
+to LGPL; selecting `ffmpeg_variant=gpl` and the matching GPL license retains the JavaCPP GPL profile and
+x264/x265. Custom versions need matching sources, checksums and compatible JavaCPP bindings.
+Shared download, digest, executable and generation-file utilities live in WaterMedia's `IOTool`;
+release JSON uses `JSONTool`.
 
 yt-dlp requires its published `SHA2-256SUMS`; missing or malformed entries stop installation.
 BotGuard is pinned to the reviewed v0.1.2 archives in `META-INF/botguard-pins.properties` because
 upstream publishes no checksum or signature. Those WaterMedia pins record archives originally
 downloaded over Codeberg HTTPS; they do not claim an upstream signature. Updating BotGuard requires
 reviewing all replacement URLs and hashes. Both installers record provenance and verify cached files.
-Explicit `watermedia.ytdlp.binary` and `watermedia.botguard.binary` paths are trusted host overrides.
+Explicit `watermedia.ytdlp.binary` and `watermedia.botguard.binary` paths are trusted host overrides
+within an active WaterMedia client session.
 
 Old native installations remain available while DLLs may be loaded. Cache cleanup belongs to the
 host after all processes using that cache stop.
