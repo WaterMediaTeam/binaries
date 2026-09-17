@@ -32,6 +32,10 @@ The exact Microsoft JDK is downloaded using a pinned SHA-256 and its installed v
 Maven and CMake are downloaded as verified archives into this project's `build/native-tools`.
 The build uses Meson and its runtime as upstream build dependencies; no system-wide tool installation
 is performed by these scripts.
+Operating-system compilers and some support libraries still come from the runner's package manager.
+Candidate builds on different machines can therefore have different native bytes even with the same
+source and recipe hashes. Compare their dependency inventories and run the native probes; do not treat
+matching recipe hashes as proof of byte-for-byte reproducibility.
 
 `-PrepareOnly` downloads and verifies source archives and patches the pristine recipe without
 running a native compiler. `-VerifyOnly` validates an already built classifier without recompiling.
