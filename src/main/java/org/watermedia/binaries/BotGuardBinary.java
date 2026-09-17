@@ -1,19 +1,23 @@
 package org.watermedia.binaries;
 
 import org.tukaani.xz.XZInputStream;
+import org.watermedia.tools.IOTool;
 import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
 import java.util.zip.ZipFile;
+import java.util.zip.CRC32;
 
 /** Installs the reviewed BotGuard release pinned by WaterMedia's native trust manifest. */
 public final class BotGuardBinary extends ExecutableBinary {
     public BotGuardBinary() {
-        super(WaterMediaBinaries.BOTGUARD_ID, switch (NativeIO.platform()) {
+        super(WaterMediaBinaries.BOTGUARD_ID, switch (IOTool.platform()) {
             case "windows-x86_64" -> "rustypipe-botguard.exe";
             case "linux-x86_64", "linux-aarch64", "macos-x86_64", "macos-aarch64" -> "rustypipe-botguard";
             default -> null;
@@ -22,28 +26,28 @@ public final class BotGuardBinary extends ExecutableBinary {
 
     /** Returns the snapshot cache belonging to the verified executable installation. */
     public Path snapshot() throws IOException {
-        final String hash = NativeIO.hash(this.executable());
+        final String hash = IOTool.sha256(this.executable());
         final Path snapshots = Files.createDirectories(WaterMediaBinaries.binaryDir(WaterMediaBinaries.BOTGUARD_ID).resolve("snapshots"));
         return snapshots.resolve(hash + ".bin");
     }
 
     @Override
-    Release latest() throws IOException {
+    protected Release latest() throws IOException {
         final var pins = new Properties();
         try (final var input = BotGuardBinary.class.getResourceAsStream("/META-INF/botguard-pins.properties")) {
             if (input == null) throw new IOException("BotGuard trust manifest is missing");
             pins.load(input);
         }
         try {
-            final String key = NativeIO.platform();
-            return new Release(pins.getProperty("version"), java.net.URI.create(pins.getProperty(key + ".url")), pins.getProperty(key + ".sha256"));
+            final String key = IOTool.platform();
+            return new Release(pins.getProperty("version"), URI.create(pins.getProperty(key + ".url")), pins.getProperty(key + ".sha256"));
         } catch (final RuntimeException e) {
-            throw new IOException("Invalid BotGuard trust manifest for " + NativeIO.platform(), e);
+            throw new IOException("Invalid BotGuard trust manifest for " + IOTool.platform(), e);
         }
     }
 
     @Override
-    void extract(final Path archive, final Path executable) throws IOException {
+    protected void extract(final Path archive, final Path executable) throws IOException {
         extract(archive, executable, this.name);
     }
 
@@ -56,7 +60,7 @@ public final class BotGuardBinary extends ExecutableBinary {
                     throw new IOException("BotGuard archive lacks one valid " + name);
                 }
                 final var entry = entries.get(0);
-                final var crc = new java.util.zip.CRC32();
+                final var crc = new CRC32();
                 long total = 0;
                 try (final var input = zip.getInputStream(entry); final var output = Files.newOutputStream(executable)) {
                     final byte[] buffer = new byte[65536];
@@ -104,7 +108,7 @@ public final class BotGuardBinary extends ExecutableBinary {
                 if (wanted && (found || size == 0 || header[345] != 0 || (header[156] != 0 && header[156] != '0'))) {
                     throw new IOException("Invalid or duplicate BotGuard TAR executable");
                 }
-                try (final var output = wanted ? Files.newOutputStream(executable) : java.io.OutputStream.nullOutputStream()) {
+                try (final var output = wanted ? Files.newOutputStream(executable) : OutputStream.nullOutputStream()) {
                     long remaining = size;
                     while (remaining > 0) {
                         final int count = input.read(buffer, 0, (int) Math.min(buffer.length, remaining));

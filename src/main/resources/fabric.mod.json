@@ -21,6 +21,7 @@
     ]
   },
   "depends": {
+    "watermedia": ">=$watermedia_min_version",
     "java": "$javarange",
     "fabricloader": "$fabricrange"
   }

@@ -1,11 +1,16 @@
 import me.modmuss50.mpp.platforms.curseforge.Curseforge
 import me.modmuss50.mpp.platforms.modrinth.Modrinth
+import org.gradle.api.attributes.Usage
 
 plugins {
     id 'java'
     id 'com.gradleup.shadow'
     id 'me.modmuss50.mod-publish-plugin'
 }
+
+// GRADLE RESTORES THE CLIENT'S FILE.ENCODING PROPERTY AFTER THE DAEMON STARTS.
+def forkEncoding = providers.gradleProperty('systemProp.file.encoding').get()
+System.setProperty('file.encoding', forkEncoding)
 
 def MT_TOKEN = System.getenv("MODRINTH_TOKEN")
 def CF_TOKEN = System.getenv("CURSEFORGE_TOKEN")
@@ -15,7 +20,7 @@ base {
 }
 
 java {
-    sourceCompatibility = targetCompatibility = JavaVersion.VERSION_17
+    sourceCompatibility = targetCompatibility = JavaVersion.toVersion(java_release)
 }
 
 tasks.withType(JavaCompile).configureEach {
@@ -38,10 +43,19 @@ configurations {
     include
     include.extendsFrom(implementation)
 
-    library
+    library {
+        attributes {
+            attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage, Usage.JAVA_API))
+        }
+    }
 }
 
+def providerClasses = files('../build/classes/java/main').builtBy(gradle.includedBuild('watermedia').task(':compileJava'))
 sourceSets {
+    // WATERMEDIA COMPILES THE SHARED SOURCES ONCE; THIS MODULE PACKAGES ITS OWN CLASSES.
+    main.java.srcDirs = []
+    main.output.classesDirs.setFrom([])
+    tools.java.srcDirs = ['tools']
     // SHADOW
     main.compileClasspath += configurations.include
     main.runtimeClasspath += configurations.include
@@ -52,15 +66,17 @@ sourceSets {
     main.compileClasspath += configurations.library
     test.compileClasspath += configurations.library
     test.runtimeClasspath += configurations.library
+    test.compileClasspath += providerClasses
+    test.runtimeClasspath += providerClasses
 }
 
+def providerProperties = new Properties()
+file('../gradle.properties').withInputStream(providerProperties.&load)
 dependencies {
-    library "com.github.WaterMediaTeam:modloaders:$loaders_version"
-    library "com.google.code.gson:gson:$gson_version"
-    library "org.apache.logging.log4j:log4j-api:$log4j_version"
-    library "org.apache.logging.log4j:log4j-core:$log4j_version"
+    toolsCompileOnly "org.bytedeco:ffmpeg:${providerProperties.ffmpeg_version}"
+    library "org.watermedia:watermedia"
 
-    // XZ IS SHADED FOR PRODUCTION AND TRANSITIVE ON THE UNRELOCATED DEVELOPMENT JAR.
+    // XZ IS SHADED FOR DISTRIBUTION AND AVAILABLE TO LOCAL COMPILATION AND TESTS.
     implementation "org.tukaani:xz:$xz_version"
     testImplementation "org.junit.jupiter:junit-jupiter:$junit_version"
     testRuntimeOnly "org.junit.platform:junit-platform-launcher"
@@ -68,7 +84,12 @@ dependencies {
 
 test {
     useJUnitPlatform()
+    jvmArgs "-Dfile.encoding=$forkEncoding"
     inputs.files('tools/RepackFFmpeg.java', 'gradle.properties')
+}
+
+tasks.withType(JavaExec).configureEach {
+    jvmArgs "-Dfile.encoding=$forkEncoding"
 }
 
 // PROCESS TARGET RESOURCES WITH MOD INFO
@@ -84,12 +105,13 @@ processResources {
     }
 }
 
-// COMPOSITE BUILDS USE THE UNRELOCATED JAR; MOD DISTRIBUTION USES SHADOWJAR.
+// BINARIES SHIPS ONLY ITS SHADED JAR; WATERMEDIA COMPILES THE SHARED SOURCES DIRECTLY.
 jar {
-    archiveClassifier = 'dev'
+    enabled = false
 }
 
 shadowJar {
+    from(providerClasses) { include 'org/watermedia/binaries/**' }
     archiveClassifier = ''
     configurations = [project.configurations.include]
 
@@ -119,6 +141,7 @@ shadowJar {
 }
 
 assemble.dependsOn shadowJar
+check.dependsOn tasks.named('compileToolsJava')
 
 // PUBLISH METADATA PARSED FROM gradle.properties
 def mcVers = minecraftversions.split(',').collect { it.trim() }
@@ -153,6 +176,7 @@ publishMods {
         cf.javaVersions.addAll(javaVers)
         cf.clientRequired = true
         cf.serverRequired = false
+        cf.requires('watermedia')
         cf.projectSlug = slug // THE MOD ID USES AN UNDERSCORE; THE REAL CURSEFORGE SLUG IS HYPHENATED
         // THE CURSEFORGE UPLOAD API HAS NO ENDPOINT TO EDIT THE PROJECT PAGE DESCRIPTION; SYNC IS MODRINTH-ONLY
     } as Action<Curseforge>)
@@ -161,6 +185,7 @@ publishMods {
         mr.accessToken = MT_TOKEN
         mr.projectId = modrinthid
         mr.minecraftVersions.addAll(mcVers)
+        mr.requires('watermedia')
         mr.projectDescription = providers.fileContents(layout.projectDirectory.file("README.md")).asText
     } as Action<Modrinth>)
 }

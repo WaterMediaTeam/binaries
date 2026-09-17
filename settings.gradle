@@ -11,3 +11,12 @@ pluginManagement {
 }
 
 rootProject.name = 'binaries'
+
+if (!file('../settings.gradle').exists())
+    throw new GradleException("WaterMedia checkout required at '..' for the binaries build")
+
+includeBuild('..') {
+    dependencySubstitution {
+        substitute module('org.watermedia:watermedia') using project(':')
+    }
+}

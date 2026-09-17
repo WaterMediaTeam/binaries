@@ -1,5 +1,7 @@
 package org.watermedia.binaries;
 
+import org.watermedia.tools.IOTool;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.channels.FileChannel;
@@ -11,18 +13,19 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.TreeMap;
 import java.util.zip.ZipFile;
+import java.util.zip.CRC32;
 
 final class FFmpegBinaries {
     private FFmpegBinaries() {}
 
-    static Path start(final Path directory, final WaterMediaBinaries.Progress progress) throws IOException {
-        final String platform = switch (NativeIO.platform()) {
+    static Path start(final Path directory, final WaterMediaBinaries module) throws IOException {
+        final String platform = switch (IOTool.platform()) {
             case "windows-x86_64" -> "windows";
             case "linux-x86_64" -> "linux";
             case "linux-aarch64" -> "linux-arm64";
             case "macos-x86_64" -> "macos";
             case "macos-aarch64" -> "macos-arm64";
-            default -> throw new IOException("FFmpeg is not bundled for " + NativeIO.platform());
+            default -> throw new IOException("FFmpeg is not bundled for " + IOTool.platform());
         };
         final var manifest = new Properties();
         try (final var input = FFmpegBinaries.class.getResourceAsStream("/META-INF/ffmpeg-manifest.properties")) {
@@ -35,14 +38,15 @@ final class FFmpegBinaries {
             if (key.startsWith(prefix) && key.endsWith(".sha256")) {
                 final String file = key.substring(prefix.length(), key.length() - ".sha256".length());
                 if (file.contains("/") || file.contains("\\") || file.equals(".") || file.equals("..")) throw new IOException("Invalid native manifest filename");
-                hashes.put(file, NativeIO.digest(manifest.getProperty(key)));
+                hashes.put(file, IOTool.sha256Digest(manifest.getProperty(key)));
             }
         }
         if (hashes.isEmpty()) throw new IOException("FFmpeg manifest contains no libraries for " + platform);
-        if (!"lgpl".equals(manifest.getProperty("variant")) || !"LGPL-3.0-or-later".equals(manifest.getProperty("license")))
-            throw new IOException("FFmpeg manifest is not the required LGPL build");
+        if (manifest.getProperty("variant", "").isBlank() || manifest.getProperty("license", "").isBlank())
+            throw new IOException("FFmpeg manifest lacks build variant or license metadata");
         final String version = manifest.getProperty("version");
-        final String hash = NativeIO.digest(manifest.getProperty(platform + ".archive.sha256"));
+        if (version == null || version.isBlank()) throw new IOException("FFmpeg manifest lacks a version");
+        final String hash = IOTool.sha256Digest(manifest.getProperty(platform + ".archive.sha256"));
         final long size;
         try {
             size = Long.parseLong(manifest.getProperty(platform + ".archive.bytes"));
@@ -52,16 +56,15 @@ final class FFmpegBinaries {
         final String resource = "/libs/ffmpeg-" + platform + ".zip";
         try (final var input = FFmpegBinaries.class.getResourceAsStream(resource)) {
             if (input == null) throw new IOException("FFmpeg archive is missing: " + resource);
-            return install(directory, version, hash, size, hashes, input, progress);
+            return install(directory, version, hash, size, hashes, input, module);
         }
     }
 
     static synchronized Path install(final Path directory, final String version, final String archiveHash, final long archiveSize,
-                                     final Map<String, String> hashes, final InputStream source, final WaterMediaBinaries.Progress progress) throws IOException {
+                                     final Map<String, String> hashes, final InputStream source, final WaterMediaBinaries module) throws IOException {
         Files.createDirectories(directory);
-        try (final var channel = FileChannel.open(directory.resolve(".install.lock"), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-             final var lock = channel.lock()) {
-            final Path current = NativeIO.current(directory);
+        try (final var channel = FileChannel.open(directory.resolve(".install.lock"), StandardOpenOption.CREATE, StandardOpenOption.WRITE); final var lock = channel.lock()) {
+            final Path current = IOTool.currentGeneration(directory);
             if (current != null && valid(current, version, hashes)) return current;
             final Path stage = Files.createTempDirectory(directory, "install-");
             boolean installed = false;
@@ -75,11 +78,11 @@ final class FFmpegBinaries {
                         copied += count;
                         if (copied > archiveSize) throw new IOException("FFmpeg archive exceeds its recorded size");
                         output.write(buffer, 0, count);
-                        progress.update("FFmpeg archive", copied, archiveSize);
+                        module.progress("FFmpeg archive", copied, archiveSize);
                     }
                 }
                 if (copied != archiveSize) throw new IOException("Truncated FFmpeg archive");
-                NativeIO.verify(archive, archiveHash);
+                IOTool.verifySha256(archive, archiveHash);
                 final var found = new HashSet<String>();
                 try (final var zip = new ZipFile(archive.toFile())) {
                     for (final var entry: zip.stream().toList()) {
@@ -90,7 +93,7 @@ final class FFmpegBinaries {
                         if (entry.getSize() < 0 || entry.getSize() > 256L * 1024 * 1024) throw new IOException("Invalid FFmpeg native size");
                         final Path destination = stage.resolve(name);
                         long size = 0;
-                        final var crc = new java.util.zip.CRC32();
+                        final var crc = new CRC32();
                         try (final var input = zip.getInputStream(entry); final var output = Files.newOutputStream(destination)) {
                             int count;
                             while ((count = input.read(buffer)) != -1) {
@@ -98,32 +101,32 @@ final class FFmpegBinaries {
                                 if (size > entry.getSize()) throw new IOException("FFmpeg native exceeds its recorded size");
                                 crc.update(buffer, 0, count);
                                 output.write(buffer, 0, count);
-                                progress.update(name, size, entry.getSize());
+                                module.progress(name, size, entry.getSize());
                             }
                         }
                         if (size != entry.getSize() || crc.getValue() != entry.getCrc()) throw new IOException("FFmpeg native failed CRC or size validation: " + name);
-                        if (hashes.containsKey(name)) NativeIO.verify(destination, hashes.get(name));
+                        if (hashes.containsKey(name)) IOTool.verifySha256(destination, hashes.get(name));
                     }
                 }
                 Files.delete(archive);
                 if (found.size() != hashes.size() + 1 || !valid(stage, version, hashes)) throw new IOException("Incomplete FFmpeg installation");
                 // PUBLISH AN IMMUTABLE GENERATION; LOADED DLLS IN THE PREVIOUS GENERATION STAY UNTOUCHED.
-                NativeIO.publish(directory, stage);
+                IOTool.publishGeneration(directory, stage);
                 installed = true;
                 return stage;
             } finally {
-                if (!installed) NativeIO.delete(stage);
+                if (!installed) IOTool.deleteTree(stage);
             }
         }
     }
 
-    static boolean valid(final Path directory, final String version, final Map<String, String> hashes) throws IOException {
+    static boolean valid(final Path directory, final String version, final Map<String, String> hashes) {
         try {
             if (!version.equals(Files.readString(directory.resolve("version.cfg")))) return false;
             try (final var files = Files.list(directory)) {
                 if (files.count() != hashes.size() + 1L) return false;
             }
-            for (final var file: hashes.entrySet()) NativeIO.verify(directory.resolve(file.getKey()), file.getValue());
+            for (final var file: hashes.entrySet()) IOTool.verifySha256(directory.resolve(file.getKey()), file.getValue());
             return true;
         } catch (final IOException e) {
             return false;

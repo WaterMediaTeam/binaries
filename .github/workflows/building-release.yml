@@ -10,14 +10,25 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: watermedia/binaries
     strategy:
       fail-fast: false
       matrix:
         platform: [curseforge, modrinth]
 
     steps:
-      - name: Checkout repository
+      - name: Checkout WaterMedia provider
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: WaterMediaTeam/watermedia
+          path: watermedia
+
+      - name: Checkout Binaries revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: watermedia/binaries
 
       - name: Read build versions
         id: versions
