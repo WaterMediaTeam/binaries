@@ -1,9 +1,9 @@
-libatomic (https://gcc.gnu.org) is the GCC atomic-operations runtime library. It is bundled, only in
-the macOS archives (libatomic.1.dylib), alongside the FFmpeg native libraries. It is part of the GNU
-Compiler Collection (GCC) runtime and is licensed under the GNU General Public License, version 3,
-with the GCC Runtime Library Exception, version 3.1. The exception permits distribution of programs
-compiled with GCC without the GPL extending to those programs. The full GPLv3 text is reproduced in
-ffmpeg-LICENSE.txt; the text of the GCC Runtime Library Exception follows:
+libatomic (https://gcc.gnu.org) is the GCC atomic-operations runtime library bundled in the macOS
+archives as libatomic.1.dylib. Eligible GCC support code may also be incorporated statically by the
+Windows toolchain. GCC runtime code is licensed under the GNU General Public License, version 3 or
+later, with the GCC Runtime Library Exception, version 3.1. The exception grants additional permission
+when its compilation conditions are met; it does not relicense the runtime as LGPL. The full GPLv3
+text is reproduced in ffmpeg-LICENSE.txt; the GCC Runtime Library Exception follows:
 
 GCC RUNTIME LIBRARY EXCEPTION
 

@@ -39,7 +39,9 @@ final class FFmpegBinaries {
             }
         }
         if (hashes.isEmpty()) throw new IOException("FFmpeg manifest contains no libraries for " + platform);
-        final String version = manifest.getProperty("version") + "-gpl";
+        if (!"lgpl".equals(manifest.getProperty("variant")) || !"LGPL-3.0-or-later".equals(manifest.getProperty("license")))
+            throw new IOException("FFmpeg manifest is not the required LGPL build");
+        final String version = manifest.getProperty("version");
         final String hash = NativeIO.digest(manifest.getProperty(platform + ".archive.sha256"));
         final long size;
         try {

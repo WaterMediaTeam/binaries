@@ -24,28 +24,28 @@ in a modpack even before WaterMedia itself is added.
 | Android  | x86_64       |   ⛔    |
 
 ## 🧰 What is inside
-- **FFMPEG 8.1.2 natives** (GPL build, JavaCPP 1.5.14) — video and audio decoding for every format WaterMedia plays
+- **FFMPEG 8.1.2 natives** (LGPLv3+ build, JavaCPP 1.5.14) — video and audio decoding without the GPL x264/x265 encoders
 - **JavaCPP JNI glue** — the bridge between the Java API and the natives
 - **yt-dlp and BotGuard provisioning** — verified executable downloads on first use
 
 ## ⚖️ License
-The module's own code is under **PolyForm Strict License 1.0.0**. The bundled third-party natives keep
-their own licenses — full, verbatim texts ship inside the jar under `META-INF/licenses/`:
+The module's own code is under **PolyForm Strict License 1.0.0**. Every bundled third-party component
+retains its own license; the relevant license texts and notices ship under `META-INF/licenses/`:
 
-- **GPL-3.0** — FFMPEG (statically linking GPL/LGPL codec libraries such as x264 and x265) and libatomic (macOS)
+- **LGPL-3.0-or-later** — FFmpeg, built with `--enable-version3` and without `--enable-gpl`, x264 or x265
+- **GPL-3.0-or-later WITH GCC-exception-3.1** — libatomic on macOS and eligible GCC runtime portions
 - **Apache-2.0** — JavaCPP JNI glue
 - **MIT / X11** — libva, libva-drm and libdrm (Linux)
 - **MIT / BSD-3-Clause** — winpthreads (Windows)
 - **0BSD** — XZ for Java (shaded)
 
-Bundling works as *mere aggregation*: the GPL governs only the bundled binaries and never relicenses
-WaterMedia's or this module's own code. See the
-[WaterMedia README](https://github.com/WaterMediaTeam/watermedia#%EF%B8%8F-license) for the full rationale.
+Other statically linked codecs retain their permissive, LGPL, MPL or Apache licenses. Review the
+component notices and corresponding-source requirements before redistributing a modified native set.
 
 ## Rebuilding and repacking FFmpeg
 
-The distributed archives come from complete JavaCPP source builds so their statically linked
-dependencies and JNI glue can be verified together. Follow [`tools/NATIVE_REBUILD.md`](tools/NATIVE_REBUILD.md)
+The distributed archives come from complete suffix-free JavaCPP LGPL source builds so their statically
+linked dependencies and JNI glue can be verified together. Follow [`tools/NATIVE_REBUILD.md`](tools/NATIVE_REBUILD.md)
 to rebuild each supported platform on its matching operating system. Candidate JARs and their verified
 provenance records are collected under `build/rebuilt/<platform>`.
 
@@ -61,7 +61,7 @@ is checked against its candidate with CRC and SHA-256 before any resource is rep
 
 Running the `FFmpeg Rebuild` workflow for `all` platforms rebuilds the five candidates, downloads each
 successful matrix artifact into its exact platform directory, repacks the complete set and uploads the
-verified `ffmpeg-gpl` artifact. A single-platform run uploads only that candidate for diagnosis or retry.
+verified `ffmpeg-lgpl` artifact. A single-platform run uploads only that candidate for diagnosis or retry.
 
 ## Host lifecycle and downloads
 
