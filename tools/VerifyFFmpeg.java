@@ -4,6 +4,7 @@ import org.bytedeco.ffmpeg.avutil.AVDictionary;
 import org.bytedeco.ffmpeg.global.*;
 import org.bytedeco.javacpp.BytePointer;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.zip.ZipFile;
 
@@ -61,7 +62,7 @@ public final class VerifyFFmpeg {
             avformat.avformat_close_input(format);
         }
         final Path entities = Path.of(args[4]).toAbsolutePath().getParent().resolve("recursive-entities.mpd");
-        java.nio.file.Files.writeString(entities, "<!DOCTYPE MPD [<!ENTITY a '&b;'><!ENTITY b '&a;'>]><MPD xmlns='urn:mpeg:dash:schema:mpd:2011' profiles='urn:mpeg:dash:profile:isoff-on-demand:2011'>&a;</MPD>");
+        Files.writeString(entities, "<!DOCTYPE MPD [<!ENTITY a '&b;'><!ENTITY b '&a;'>]><MPD xmlns='urn:mpeg:dash:schema:mpd:2011' profiles='urn:mpeg:dash:profile:isoff-on-demand:2011'>&a;</MPD>");
         final var invalid = new AVFormatContext(null);
         try {
             // SELECT DASH EXPLICITLY SO MALFORMED XML REACHES ITS PARSER EVEN WHEN PROBING RULES CHANGE.
