@@ -1,5 +1,3 @@
-import me.modmuss50.mpp.platforms.curseforge.Curseforge
-import me.modmuss50.mpp.platforms.modrinth.Modrinth
 import org.gradle.api.attributes.Usage
 
 plugins {
@@ -8,188 +6,71 @@ plugins {
     id 'me.modmuss50.mod-publish-plugin'
 }
 
-// GRADLE RESTORES THE CLIENT'S FILE.ENCODING PROPERTY AFTER THE DAEMON STARTS.
-def forkEncoding = providers.gradleProperty('systemProp.file.encoding').get()
-System.setProperty('file.encoding', forkEncoding)
-
-def MT_TOKEN = System.getenv("MODRINTH_TOKEN")
-def CF_TOKEN = System.getenv("CURSEFORGE_TOKEN")
-
-base {
-    archivesName = id
-}
-
-java {
-    sourceCompatibility = targetCompatibility = JavaVersion.toVersion(java_release)
-}
-
-tasks.withType(JavaCompile).configureEach {
-    options.encoding = 'UTF-8'
-    options.release = Integer.parseInt(java_release)
-}
-
-println("Gradle Java: ${JavaVersion.current()}")
-println("Building project: ${project.libname}")
-println("Java: ${System.getProperty 'java.version'}, JVM: ${System.getProperty 'java.vm.version'} (${System.getProperty 'java.vendor'}), Arch: ${System.getProperty 'os.arch'}, Encoding: ${System.getProperty "file.encoding"}")
-
-repositories {
-    google()
-    mavenCentral()
-    maven { url = 'https://jitpack.io' }
-    maven { url = "https://repo.spongepowered.org/maven" }
-}
-
+Usage javaApi = objects.named(Usage, Usage.JAVA_API)
 configurations {
-    include
-    include.extendsFrom(implementation)
-
     library {
         attributes {
-            attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage, Usage.JAVA_API))
+            attribute(Usage.USAGE_ATTRIBUTE, javaApi)
         }
     }
 }
 
-def providerClasses = files('../build/classes/java/main').builtBy(gradle.includedBuild('watermedia').task(':compileJava'))
+def providerClasses = files(layout.projectDirectory.dir('../build/classes/java/main')).builtBy(gradle.includedBuild('watermedia').task(':compileJava'))
+def hostClasspath = files(configurations.named('library'), providerClasses)
 sourceSets {
     // WATERMEDIA COMPILES THE SHARED SOURCES ONCE; THIS MODULE PACKAGES ITS OWN CLASSES.
     main.java.srcDirs = []
-    main.output.classesDirs.setFrom([])
     tools.java.srcDirs = ['tools']
-    // SHADOW
-    main.compileClasspath += configurations.include
-    main.runtimeClasspath += configurations.include
-    test.compileClasspath += configurations.include
-    test.runtimeClasspath += configurations.include
 
-    // LIBRARY
-    main.compileClasspath += configurations.library
-    test.compileClasspath += configurations.library
-    test.runtimeClasspath += configurations.library
-    test.compileClasspath += providerClasses
-    test.runtimeClasspath += providerClasses
+    // TESTS NEED THE PROVIDER'S HOST LIBRARIES AND ITS SHARED BINARY CLASSES.
+    test.compileClasspath += hostClasspath
+    test.runtimeClasspath += hostClasspath
 }
 
 def providerProperties = new Properties()
 file('../gradle.properties').withInputStream(providerProperties.&load)
 dependencies {
     toolsCompileOnly "org.bytedeco:ffmpeg:${providerProperties.ffmpeg_version}"
-    library "org.watermedia:watermedia"
-
-    // XZ IS SHADED FOR DISTRIBUTION AND AVAILABLE TO LOCAL COMPILATION AND TESTS.
+    library 'org.watermedia:watermedia'
     implementation "org.tukaani:xz:$xz_version"
-    testImplementation "org.junit.jupiter:junit-jupiter:$junit_version"
-    testRuntimeOnly "org.junit.platform:junit-platform-launcher"
 }
 
 test {
-    useJUnitPlatform()
-    jvmArgs "-Dfile.encoding=$forkEncoding"
     inputs.files('tools/RepackFFmpeg.java', 'gradle.properties')
 }
 
-tasks.withType(JavaExec).configureEach {
-    jvmArgs "-Dfile.encoding=$forkEncoding"
-}
-
-// PROCESS TARGET RESOURCES WITH MOD INFO
-def resourceProperties = providers.gradlePropertiesPrefixedBy('').get()
 processResources {
-    outputs.upToDateWhen { false }
-    inputs.properties(resourceProperties)
     from('tools/ffmpeg-manifest.properties') {
         into 'META-INF'
     }
-    filesMatching(['META-INF/mods.toml', 'META-INF/neoforge.mods.toml', 'pack.mcmeta', 'fabric.mod.json']) {
-        expand(resourceProperties)
-    }
 }
 
-// BINARIES SHIPS ONLY ITS SHADED JAR; WATERMEDIA COMPILES THE SHARED SOURCES DIRECTLY.
+// ONLY THE SHADED JAR IS DISTRIBUTED.
 jar {
     enabled = false
 }
-
 shadowJar {
     from(providerClasses) { include 'org/watermedia/binaries/**' }
     archiveClassifier = ''
-    configurations = [project.configurations.include]
-
-    // RELOCATE XZ SO IT DOES NOT COLLIDE WITH OTHER MODS THAT BUNDLE org.tukaani.xz UNRELOCATED
     relocate 'org.tukaani.xz', 'org.watermedia.libs.xz'
-
     duplicatesStrategy = DuplicatesStrategy.WARN
-    manifest {
-        attributes "id"                         : id
-        attributes "version"                    : version
-        attributes "Specification-Title"        : id
-        attributes "Specification-Vendor"       : authors
-        attributes "Specification-Version"      : version
-        attributes "Implementation-Title"       : id
-        attributes "Implementation-Version"     : version
-        attributes "Implementation-Vendor"      : authors
-        attributes "Implementation-Timestamp"   : new Date().format("yyyy-MM-dd'T'HH:mm:ssZ")
-    }
-    // XZ IS A MULTI-RELEASE JAR AND SHADOW COPIES ITS `Multi-Release: true` ONTO OUR MANIFEST (IT SCANS
-    // THE SHADED DEPS ON EXECUTION, SO THE ATTRIBUTE CANNOT BE UNSET FROM THE manifest {} BLOCK ABOVE).
-    // DROPPING META-INF/versions WHOLESALE LEFT THE FLAG WITHOUT ITS PAYLOAD AND FML (FORGE/NEOFORGE)
-    // BLEW UP LOOKING FOR IT, SO KEEP THE VERSIONED CLASSES — SHADOW RELOCATES THEM TOO — AND DROP ONLY
-    // THE module-info, WHICH WOULD OTHERWISE DECLARE A STALE `org.tukaani.xz` MODULE INSIDE OUR JAR.
-    exclude 'META-INF/versions/*/module-info.class', 'META-INF/maven/**'
-    // COMBINE DUPLICATE SERVICE FILES INSTEAD OF OVERWRITING THEM
+    // KEEP XZ'S MULTI-RELEASE CLASSES AND MERGE ITS SERVICES.
+    exclude 'META-INF/maven/**'
     mergeServiceFiles()
 }
 
-assemble.dependsOn shadowJar
 check.dependsOn tasks.named('compileToolsJava')
 
-// PUBLISH METADATA PARSED FROM gradle.properties
-def mcVers = minecraftversions.split(',').collect { it.trim() }
-def javaVers = javaversions.split(',').collect { JavaVersion.toVersion(it.trim()) }
-def loaders = modloaders.split(',').collect { it.trim() }
-// INSIDE publishMods THE DELEGATE IS THE EXTENSION, SO A BARE `version` HITS ITS Property<String> AND
-// STRINGIFIES TO "extension 'publishMods' property 'version'"; READ THE PROJECT VERSION OUT HERE INSTEAD
-def publishVersion = project.version.toString()
-def releaseType = project.versiontype.toString()
-if (!(releaseType in ['ALPHA', 'BETA', 'STABLE'])) throw new GradleException('versiontype must be ALPHA, BETA or STABLE')
-if (!(publishVersion ==~ (releaseType == 'STABLE' ? /\d+\.\d+\.\d+/ : /\d+\.\d+\.\d+\.\d+/))) {
-    throw new GradleException('STABLE versions require three components; ALPHA and BETA require four')
-}
-
-// PLATFORMS ARE CONFIGURED THROUGH THE TYPED Action OVERLOAD AND AN EXPLICIT RECEIVER: THE PLUGIN ALSO
-// EXPOSES KOTLIN Closure OVERLOADS THAT THE GROOVY IDE INSPECTION CANNOT RESOLVE, WHICH FLAGS THE WHOLE
-// BLOCK AND LEAVES IT WITHOUT A DELEGATE (NO COMPLETION); IT ALSO KILLS THE SHADOWING ABOVE FOR GOOD
 publishMods {
     file = shadowJar.archiveFile
-    changelog = getChangelogText()
-    type = ['ALPHA': ALPHA, 'BETA': BETA, 'STABLE': STABLE][releaseType]
-    displayName = publishVersion
-    modLoaders.addAll(loaders)
-    maxRetries = 2
-
-    dryRun = false
-
-    curseforge({ Curseforge cf ->
-        cf.accessToken = CF_TOKEN
-        cf.projectId = curseforgeid
-        cf.minecraftVersions.addAll(mcVers)
-        cf.javaVersions.addAll(javaVers)
-        cf.clientRequired = true
-        cf.serverRequired = false
-        cf.requires('watermedia')
-        cf.projectSlug = slug // THE MOD ID USES AN UNDERSCORE; THE REAL CURSEFORGE SLUG IS HYPHENATED
-        // THE CURSEFORGE UPLOAD API HAS NO ENDPOINT TO EDIT THE PROJECT PAGE DESCRIPTION; SYNC IS MODRINTH-ONLY
-    } as Action<Curseforge>)
-
-    modrinth({ Modrinth mr ->
-        mr.accessToken = MT_TOKEN
-        mr.projectId = modrinthid
-        mr.minecraftVersions.addAll(mcVers)
-        mr.requires('watermedia')
-        mr.projectDescription = providers.fileContents(layout.projectDirectory.file("README.md")).asText
-    } as Action<Modrinth>)
+    curseforge {
+        serverRequired = false
+        projectSlug = slug
+        requires('watermedia')
+    }
+    modrinth {
+        requires('watermedia')
+    }
 }
 
-def getChangelogText() {
-    return file('CHANGELOG.md').readLines('UTF-8').takeWhile { !it.isEmpty() }.join('\n')
-}
+apply from: '../gradle/common.gradle'
