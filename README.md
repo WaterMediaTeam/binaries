@@ -7,8 +7,9 @@ Companion library for [**WATERMeDIA**](https://www.curseforge.com/minecraft/mc-m
 the pre-built FFMPEG natives, their JNI glue and a few extra shared libraries. With this jar you won't
 need to compile or install FFMPEG or any other native application — plug and play as you deserve.
 
-Install it next to WaterMedia; on first launch WaterMedia extracts the natives for your platform and
-loads them automatically. This module requires WaterMedia; it has no independent startup lifecycle.
+Minecraft clients require this module alongside WaterMedia; dedicated servers can omit it.
+On first launch WaterMedia extracts the natives for your platform and loads them automatically.
+This module requires WaterMedia; it has no independent startup lifecycle.
 
 ## 📦 Supported platforms
 | Platform | Architecture | Status |
@@ -68,8 +69,8 @@ This module depends on WaterMedia and must be checked out in its `binaries/` sub
 WaterMedia compiles the shared sources together; each distribution JAR contains only its own classes.
 `WaterMedia.start(...)` initializes `WaterMediaBinaries` through the shared module lifecycle after
 configuration is ready, before network, platform and media services. A failed installed module stops
-startup; an absent module is skipped without disabling Java image support. Dedicated servers skip it,
-and disabling FFmpeg skips native extraction.
+startup. Applications embedding the Java API can omit the module without losing image support.
+Dedicated servers skip it, and disabling FFmpeg skips native extraction.
 `WaterMedia.stop()` clears its bindings after consumers stop, without deleting loaded native files.
 Each FFmpeg startup verifies every installed library against the bundled SHA-256 manifest. Repairs
 and upgrades create a separate installation and publish it only after complete verification.
