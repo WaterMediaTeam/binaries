@@ -1,33 +1,14 @@
-# RELEASE 3.0.0.6 (RC)
-- 🐛 Fixed jar crashes the game asking for multirelease folder
-
-# RELEASEE 3.0.0-rc.5
-- 🛠️ Updated to WATERMeDIA 3.0.0.22 (minimal version)
-- 🛠️ Now requires WATERMeDIA to be loaded as a mod.
-
-# RELEASEE 3.0.0-rc.4
-- 🛠️ Downloads now run through WaterMedia's `NetRequest` (binaries and watermedia are codependent; `NetTool` removed)
-
-# 📦 RELEASE 3.0.0-rc.4
-- ✨ Added YTDPL and BotGuard download manager (downloads latest available binary from github)
-- 🛠️ Updated shipped binaries from LGPL compiled binaries to GPL ones (adds x264 and x265)
-- 🐛 Fixed jar metadata license
-- 🐛 Fixed FORGE/NEOFORGE uses old modId (wm_binaries), moved to new one "watermedia_binaries"
-
-# 📦 RELEASE 3.0.0-rc.3
-- 🐛 Fixed CI building (missing builds on CF and MT)
-
-# 📦 RELEASE 3.0.0-rc.2
-- ✨ Updated FFMPEG binaries to 8.0.1
-
-# 📦 RELEASE 3.0.0-rc.1
-- ✨ Marked as release-candidate (not much to update)
-
-# 📦 RELEASE 3.0.0-beta.2 (1)
+# 📦 RELEASE 3.0.0
+- ⚙️ Native libraries initialize and stop exclusively with WaterMedia
+- ⚙️ WaterMedia requires Binaries on Minecraft clients; it remains optional on dedicated servers.
+- ✨ Replaced VLC binaries with FFMPEG 8.1.2 (LGPL compiled, without the GPL x264 and x265 encoders) binaries and JavaCPP 1.5.14
+  - ✨Plug and play support for Windows (x64), MacOS (x64 & ARM) and Linux (x64 & ARM)
+- ✨ Split binaries from WATERMeDIA's project
 - ✨ Enhanced unzipping performance
-- ✨ Added FFMPEG for Windows ARM
-- 🐛 Fixed FabricMC support
-- 🛠️ Code cleanup and consistency changes
-
-# 📦 RELEASE 3.0.0-alpha.3
-- 🛠️ Removed LibVLC binaries
+- ✨ Added YTDPL and BotGuard download manager (downloads latest available binary from github) for Youtube support
+  - ✨ `IPlatform` for YouTube is available on WATERMeDIA v3 and no longer requires the Platform Extension.
+  - 🛠️ Downloads require verified checksums, BotGuard uses the reviewed 0.1.2 release.
+- 🛠️ Simplified builds and dependency handling with WaterMedia.
+- 🐛 Fixed IntelliJ IDEA warnings and code navigation in build, test and publishing settings.
+- 🐛 Fixed shared dependency warnings when synchronizing the project in IntelliJ IDEA.
+- 🐛 Corrected Forge's minimum supported loader version.
