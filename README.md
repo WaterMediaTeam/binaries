@@ -29,8 +29,10 @@ This module requires WaterMedia; it has no independent startup lifecycle.
 - **yt-dlp and BotGuard provisioning** — verified executable downloads on first use
 
 ## ⚖️ License
-The module's own code is under **PolyForm Strict License 1.0.0**. Every bundled third-party component
-retains its own license; the relevant license texts and notices ship under `META-INF/licenses/`:
+The module's own code is under the **[Defensive Public Source (Non-Commercial) License v1.0.0](LICENSE.md)**.<br>
+Copyright SrRapero720 (https://github.com/SrRapero720)<br>
+Every bundled third-party component retains its own license; the relevant license texts and notices ship
+under `META-INF/licenses/`:
 
 - **LGPL-3.0-or-later** — FFmpeg, built with `--enable-version3` and without `--enable-gpl`, x264 or x265
 - **GPL-3.0-or-later WITH GCC-exception-3.1** — libatomic on macOS and eligible GCC runtime portions
