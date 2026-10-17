@@ -54,7 +54,7 @@ public final class YtDlpBinary extends ExecutableBinary {
             final String name = parts[1].startsWith("*") ? parts[1].substring(1) : parts[1];
             if (!target.equals(name)) continue;
             if (result != null) throw new IOException("Duplicate yt-dlp checksum entry: " + target);
-            result = IOTool.sha256Digest(parts[0]);
+            result = IOTool.requireSha256(parts[0]);
         }
         if (result == null) throw new IOException("Missing yt-dlp SHA-256 entry: " + target);
         return result;

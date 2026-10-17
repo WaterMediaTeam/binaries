@@ -54,7 +54,7 @@ class NativeProvisionTest {
         }
         assertEquals("v0.1.2", pins.getProperty("version"));
         for (final String platform: new String[]{"windows-x86_64", "linux-x86_64", "linux-aarch64", "macos-x86_64", "macos-aarch64"}) {
-            assertEquals(64, IOTool.sha256Digest(pins.getProperty(platform + ".sha256")).length());
+            assertEquals(64, IOTool.requireSha256(pins.getProperty(platform + ".sha256")).length());
             assertTrue(pins.getProperty(platform + ".url").startsWith("https://codeberg.org/ThetaDev/rustypipe-botguard/releases/download/v0.1.2/"));
         }
     }

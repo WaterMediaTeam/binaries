@@ -38,7 +38,7 @@ final class FFmpegBinaries {
             if (key.startsWith(prefix) && key.endsWith(".sha256")) {
                 final String file = key.substring(prefix.length(), key.length() - ".sha256".length());
                 if (file.contains("/") || file.contains("\\") || file.equals(".") || file.equals("..")) throw new IOException("Invalid native manifest filename");
-                hashes.put(file, IOTool.sha256Digest(manifest.getProperty(key)));
+                hashes.put(file, IOTool.requireSha256(manifest.getProperty(key)));
             }
         }
         if (hashes.isEmpty()) throw new IOException("FFmpeg manifest contains no libraries for " + platform);
@@ -46,7 +46,7 @@ final class FFmpegBinaries {
             throw new IOException("FFmpeg manifest lacks build variant or license metadata");
         final String version = manifest.getProperty("version");
         if (version == null || version.isBlank()) throw new IOException("FFmpeg manifest lacks a version");
-        final String hash = IOTool.sha256Digest(manifest.getProperty(platform + ".archive.sha256"));
+        final String hash = IOTool.requireSha256(manifest.getProperty(platform + ".archive.sha256"));
         final long size;
         try {
             size = Long.parseLong(manifest.getProperty(platform + ".archive.bytes"));

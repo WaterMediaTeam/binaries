@@ -59,7 +59,7 @@ abstract sealed class ExecutableBinary permits YtDlpBinary, BotGuardBinary {
                         cached = new Properties();
                         try (final var input = Files.newInputStream(record)) { cached.load(input); }
                         IOTool.verifySha256(current.resolve(this.name), cached.getProperty("executable.sha256"));
-                        IOTool.sha256Digest(cached.getProperty("archive.sha256"));
+                        IOTool.requireSha256(cached.getProperty("archive.sha256"));
                         if (!IOTool.platform().equals(cached.getProperty("platform"))) cached = null;
                     } catch (final IOException e) {
                         cached = null;
@@ -115,7 +115,7 @@ abstract sealed class ExecutableBinary permits YtDlpBinary, BotGuardBinary {
         protected Release {
             if (version == null || version.isBlank()) throw new IllegalArgumentException("Release version is empty");
             try {
-                sha256 = IOTool.sha256Digest(sha256);
+                sha256 = IOTool.requireSha256(sha256);
             } catch (final IOException e) {
                 throw new IllegalArgumentException(e.getMessage(), e);
             }
