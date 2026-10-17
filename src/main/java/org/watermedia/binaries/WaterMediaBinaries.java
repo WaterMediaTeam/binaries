@@ -3,7 +3,7 @@ package org.watermedia.binaries;
 import org.apache.logging.log4j.Logger;
 import org.watermedia.WaterMedia;
 import org.watermedia.WaterMediaConfig;
-import org.watermedia.WaterMediaModule;
+import org.watermedia.bootstrap.WaterMediaModule;
 import org.watermedia.tools.LogTool;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -20,8 +20,8 @@ public final class WaterMediaBinaries extends WaterMediaModule {
     private static volatile Map<String, Path> paths = Map.of();
 
     @Override
-    protected void start(final WaterMedia context) throws IOException {
-        final Path root = context.tmp;
+    protected void start() throws IOException {
+        final Path root = WaterMedia.tmp();
         paths = Map.of(YTDLP_ID, root.resolve(YTDLP_ID), BOTGUARD_ID, root.resolve(BOTGUARD_ID));
         if (WaterMediaConfig.media.ffmpeg.disable) return;
         this.task(1, 1, "FFmpeg");
@@ -44,7 +44,7 @@ public final class WaterMediaBinaries extends WaterMediaModule {
     }
 
     @Override
-    protected void release(final WaterMedia context) {
+    protected void release() {
         paths = Map.of();
     }
 
