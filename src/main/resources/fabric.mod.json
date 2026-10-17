@@ -22,9 +22,9 @@
     ]
   },
   "depends": {
-    "watermedia": $watermediafabric,
-    "minecraft": $minecraftfabric,
-    "fabricloader": "$fabricrange",
-    "java": "$javarange"
+    "watermedia": $watermediadepends,
+    "minecraft": $minecraftdepends,
+    "fabricloader": $fabricdepends,
+    "java": $javadepends
   }
 }
