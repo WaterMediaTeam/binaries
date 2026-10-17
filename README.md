@@ -65,6 +65,18 @@ Running the `FFmpeg Rebuild` workflow for `all` platforms rebuilds the five cand
 successful matrix artifact into its exact platform directory, repacks the complete set and uploads the
 verified `ffmpeg-native` artifact. A single-platform run uploads only that candidate for diagnosis or retry.
 
+### Reproducibility
+
+The recipe pins sources, patches and versions, but not the toolchain. A local Windows set and CI run
+`35165186994`, built from the same recipe, preset and patch hashes, differ in all 15 DLLs, and not only in
+timestamps, checksums, build dates and checkout paths. Every DLL carries different MinGW-w64 CRT startup
+code (the CI CRT `14.0.0.r375` adds a destructor call; the local CRT revision was never recorded),
+`libwinpthread-1.dll` is copied as-is from the host's MSYS2 package (`r353` locally, `r375` on CI), and
+FFmpeg's `configure` auto-detects `cuda_llvm` when Clang is installed, so the CI runner added nine CUDA
+filters to `avfilter-11.dll`. A byte-identical build would need a frozen MSYS2
+snapshot, explicit CUDA/Clang capabilities, `-Wl,--no-insert-timestamp`, `SOURCE_DATE_EPOCH`,
+`-ffile-prefix-map` and a recorded environment manifest; none of them is applied yet.
+
 ## Host lifecycle and downloads
 
 This module depends on WaterMedia and must be checked out in its `binaries/` subdirectory to build.
@@ -81,7 +93,8 @@ Runtime loading does not restrict the declared license or build version. The sup
 to LGPL; selecting `ffmpeg_variant=gpl` and the matching GPL license retains the JavaCPP GPL profile and
 x264/x265. Custom versions need matching sources, checksums and compatible JavaCPP bindings.
 Shared download, digest, executable and generation-file utilities live in WaterMedia's `IOTool`;
-release JSON uses `JSONTool`.
+release JSON uses `JSONTool`. WaterMedia's module descriptor exports `org.watermedia.tools` only to this
+module, named `watermedia_binaries` after its mod id.
 
 yt-dlp requires its published `SHA2-256SUMS`; missing or malformed entries stop installation.
 BotGuard is pinned to the reviewed v0.1.2 archives in `META-INF/botguard-pins.properties` because
