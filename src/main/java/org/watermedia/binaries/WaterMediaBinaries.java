@@ -9,7 +9,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Map;
 
-/** Provisions native files through WaterMedia's module lifecycle. */
+/** Provisions native files when WaterMedia loads and keeps their locations for the life of the process. */
 public final class WaterMediaBinaries extends WaterMediaModule {
     public static final String ID = "watermedia_binaries";
     public static final String NAME = "WaterMedia: Binaries";
@@ -24,28 +24,13 @@ public final class WaterMediaBinaries extends WaterMediaModule {
         final Path root = WaterMedia.tmp();
         paths = Map.of(YTDLP_ID, root.resolve(YTDLP_ID), BOTGUARD_ID, root.resolve(BOTGUARD_ID));
         if (WaterMediaConfig.media.ffmpeg.disable) return;
-        this.task(1, 1, "FFmpeg");
-        try {
-            final Path installed = FFmpegBinaries.start(root.resolve(FFMPEG_ID), this);
-            paths = Map.of(FFMPEG_ID, installed, YTDLP_ID, root.resolve(YTDLP_ID), BOTGUARD_ID, root.resolve(BOTGUARD_ID));
-        } finally {
-            this.work("", 0, 0, false);
-        }
-    }
-
-    // EXTRACTION REPORTS INTO THE SAME MODULE SNAPSHOT AS THE REST OF WATERMEDIA.
-    void progress(final String name, final long done, final long total) {
-        this.work(name, done, total, false);
+        final Path installed = FFmpegBinaries.start(root.resolve(FFMPEG_ID));
+        paths = Map.of(FFMPEG_ID, installed, YTDLP_ID, root.resolve(YTDLP_ID), BOTGUARD_ID, root.resolve(BOTGUARD_ID));
     }
 
     /** Returns a registered cache or provisioned native directory. */
     public static Path pathOf(final String id) {
         return paths.get(id);
-    }
-
-    @Override
-    protected void release() {
-        paths = Map.of();
     }
 
     static Path binaryDir(final String id) throws IOException {

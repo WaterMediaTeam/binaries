@@ -32,7 +32,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class NativeProvisionTest {
     @TempDir Path directory;
-    private final WaterMediaBinaries module = new WaterMediaBinaries();
 
     @Test
     void checksumMustExistBeValidAndUnique() throws Exception {
@@ -100,7 +99,7 @@ class NativeProvisionTest {
         final InputStream failing = new InputStream() {
             @Override public int read() throws IOException { throw new IOException("Interrupted"); }
         };
-        assertThrows(IOException.class, () -> FFmpegBinaries.install(this.directory, next.version, next.hash, next.zip.length, next.libraries, failing, this.module));
+        assertThrows(IOException.class, () -> FFmpegBinaries.install(this.directory, next.version, next.hash, next.zip.length, next.libraries, failing));
         assertEquals(previous, IOTool.currentGeneration(this.directory));
         try (final var files = Files.list(this.directory)) {
             assertEquals(1, files.filter(Files::isDirectory).count());
@@ -125,10 +124,10 @@ class NativeProvisionTest {
     void archiveDigestAndUnexpectedPathsFailClosed() throws Exception {
         final var good = fixture("v1", Map.of("native.dll", "native"));
         assertThrows(IOException.class, () -> FFmpegBinaries.install(this.directory, good.version, "0".repeat(64), good.zip.length, good.libraries,
-                new ByteArrayInputStream(good.zip), this.module));
+                new ByteArrayInputStream(good.zip)));
         final var unsafe = fixture("v1", Map.of("../escape", "bad"));
         assertThrows(IOException.class, () -> FFmpegBinaries.install(this.directory, unsafe.version, unsafe.hash, unsafe.zip.length, good.libraries,
-                new ByteArrayInputStream(unsafe.zip), this.module));
+                new ByteArrayInputStream(unsafe.zip)));
         assertFalse(Files.exists(this.directory.getParent().resolve("escape")));
         assertNull(IOTool.currentGeneration(this.directory));
     }
@@ -282,7 +281,7 @@ class NativeProvisionTest {
     }
 
     private Path install(final Fixture fixture) throws IOException {
-        return FFmpegBinaries.install(this.directory, fixture.version, fixture.hash, fixture.zip.length, fixture.libraries, new ByteArrayInputStream(fixture.zip), this.module);
+        return FFmpegBinaries.install(this.directory, fixture.version, fixture.hash, fixture.zip.length, fixture.libraries, new ByteArrayInputStream(fixture.zip));
     }
 
     private static Fixture fixture(final String version, final Map<String, String> files) throws Exception {

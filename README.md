@@ -81,11 +81,11 @@ snapshot, explicit CUDA/Clang capabilities, `-Wl,--no-insert-timestamp`, `SOURCE
 
 This module depends on WaterMedia and must be checked out in its `binaries/` subdirectory to build.
 WaterMedia compiles the shared sources together; each distribution JAR contains only its own classes.
-`WaterMedia.start(...)` initializes `WaterMediaBinaries` through the shared module lifecycle after
-configuration is ready, before network, platform and media services. A failed installed module stops
-startup. Applications embedding the Java API can omit the module without losing image support.
-Dedicated servers skip it, and disabling FFmpeg skips native extraction.
-`WaterMedia.stop()` clears its bindings after consumers stop, without deleting loaded native files.
+`WaterMedia.start(...)` loads `WaterMediaBinaries` as a module after the configuration, before the
+network and media modules. A failed installed module ends the load. Applications embedding the Java
+API can omit the module without losing image support. Dedicated servers skip it, and disabling
+FFmpeg skips native extraction. The load happens once per process: the published native paths and
+loaded native files stay for its whole life.
 Each FFmpeg startup verifies every installed library against the bundled SHA-256 manifest. Repairs
 and upgrades create a separate installation and publish it only after complete verification.
 

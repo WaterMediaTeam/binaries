@@ -18,7 +18,7 @@ import java.util.zip.CRC32;
 final class FFmpegBinaries {
     private FFmpegBinaries() {}
 
-    static Path start(final Path directory, final WaterMediaBinaries module) throws IOException {
+    static Path start(final Path directory) throws IOException {
         final String platform = switch (IOTool.platform()) {
             case "windows-x86_64" -> "windows";
             case "linux-x86_64" -> "linux";
@@ -56,12 +56,12 @@ final class FFmpegBinaries {
         final String resource = "/libs/ffmpeg-" + platform + ".zip";
         try (final var input = FFmpegBinaries.class.getResourceAsStream(resource)) {
             if (input == null) throw new IOException("FFmpeg archive is missing: " + resource);
-            return install(directory, version, hash, size, hashes, input, module);
+            return install(directory, version, hash, size, hashes, input);
         }
     }
 
     static synchronized Path install(final Path directory, final String version, final String archiveHash, final long archiveSize,
-                                     final Map<String, String> hashes, final InputStream source, final WaterMediaBinaries module) throws IOException {
+                                     final Map<String, String> hashes, final InputStream source) throws IOException {
         Files.createDirectories(directory);
         try (final var channel = FileChannel.open(directory.resolve(".install.lock"), StandardOpenOption.CREATE, StandardOpenOption.WRITE); final var lock = channel.lock()) {
             final Path current = IOTool.currentGeneration(directory);
@@ -78,7 +78,6 @@ final class FFmpegBinaries {
                         copied += count;
                         if (copied > archiveSize) throw new IOException("FFmpeg archive exceeds its recorded size");
                         output.write(buffer, 0, count);
-                        module.progress("FFmpeg archive", copied, archiveSize);
                     }
                 }
                 if (copied != archiveSize) throw new IOException("Truncated FFmpeg archive");
@@ -101,7 +100,6 @@ final class FFmpegBinaries {
                                 if (size > entry.getSize()) throw new IOException("FFmpeg native exceeds its recorded size");
                                 crc.update(buffer, 0, count);
                                 output.write(buffer, 0, count);
-                                module.progress(name, size, entry.getSize());
                             }
                         }
                         if (size != entry.getSize() || crc.getValue() != entry.getCrc()) throw new IOException("FFmpeg native failed CRC or size validation: " + name);
