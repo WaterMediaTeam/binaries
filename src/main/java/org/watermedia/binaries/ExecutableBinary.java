@@ -1,5 +1,6 @@
 package org.watermedia.binaries;
 
+import org.watermedia.api.util.NetRequest;
 import org.watermedia.tools.IOTool;
 
 import java.io.IOException;
@@ -85,7 +86,11 @@ abstract sealed class ExecutableBinary permits YtDlpBinary, BotGuardBinary {
                 boolean installed = false;
                 try {
                     final Path archive = stage.resolve("download");
-                    IOTool.downloadVerified(release.url, archive, release.sha256, 512L * 1024 * 1024);
+                    // FIXED LIMITS, INDEPENDENT OF THE USER'S NETWORK SETTINGS: A ZERO REDIRECT CAP WOULD BREAK EVERY GITHUB ASSET
+                    try (final NetRequest request = NetRequest.create(release.url).httpsOnly().maxBytes(512L << 20).deadline(180_000L)
+                            .maxRedirects(8).connectTimeout(15_000).readTimeout(15_000).send()) {
+                        request.download(archive, release.sha256);
+                    }
                     final Path binary = stage.resolve(this.name);
                     this.extract(archive, binary);
                     Files.deleteIfExists(archive);

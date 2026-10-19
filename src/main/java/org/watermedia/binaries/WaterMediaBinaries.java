@@ -4,7 +4,6 @@ import org.apache.logging.log4j.Logger;
 import org.watermedia.WaterMedia;
 import org.watermedia.WaterMediaConfig;
 import org.watermedia.bootstrap.WaterMediaModule;
-import org.watermedia.tools.LogTool;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Map;
@@ -16,7 +15,7 @@ public final class WaterMediaBinaries extends WaterMediaModule {
     public static final String FFMPEG_ID = "ffmpeg";
     public static final String YTDLP_ID = "yt-dlp";
     public static final String BOTGUARD_ID = "botguard";
-    public static final Logger LOGGER = LogTool.logger(ID);
+    public static final Logger LOGGER = WaterMedia.logger(ID);
     private static volatile Map<String, Path> paths = Map.of();
 
     @Override

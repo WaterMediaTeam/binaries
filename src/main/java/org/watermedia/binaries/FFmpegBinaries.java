@@ -19,14 +19,9 @@ final class FFmpegBinaries {
     private FFmpegBinaries() {}
 
     static Path start(final Path directory) throws IOException {
-        final String platform = switch (IOTool.platform()) {
-            case "windows-x86_64" -> "windows";
-            case "linux-x86_64" -> "linux";
-            case "linux-aarch64" -> "linux-arm64";
-            case "macos-x86_64" -> "macos";
-            case "macos-aarch64" -> "macos-arm64";
-            default -> throw new IOException("FFmpeg is not bundled for " + IOTool.platform());
-        };
+        // THE ZIPS FOLLOW THE SHARED CLASSIFIER; WINDOWS ON ARM SHIPS NO BUILD
+        final String platform = IOTool.platformClassifier();
+        if (platform.equals("unsupported") || platform.equals("windows-arm64")) throw new IOException("FFmpeg is not bundled for " + IOTool.platform());
         final var manifest = new Properties();
         try (final var input = FFmpegBinaries.class.getResourceAsStream("/META-INF/ffmpeg-manifest.properties")) {
             if (input == null) throw new IOException("FFmpeg integrity manifest is missing");

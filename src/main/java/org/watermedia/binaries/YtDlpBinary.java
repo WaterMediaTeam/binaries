@@ -1,6 +1,7 @@
 package org.watermedia.binaries;
 
 import com.google.gson.JsonObject;
+import org.watermedia.api.util.NetRequest;
 import org.watermedia.tools.IOTool;
 import org.watermedia.tools.JSONTool;
 import java.io.IOException;
@@ -21,10 +22,19 @@ public final class YtDlpBinary extends ExecutableBinary {
         }, "watermedia.ytdlp.binary");
     }
 
+    // BOUNDED HTTPS TEXT WITH FIXED LIMITS, INDEPENDENT OF THE USER'S NETWORK SETTINGS: EVERY HOP MUST BE HTTPS
+    private static String fetch(final URI uri) throws IOException {
+        try (final NetRequest request = NetRequest.create(uri).httpsOnly().maxBytes(2L << 20).deadline(180_000L)
+                .maxRedirects(8).connectTimeout(15_000).readTimeout(15_000).send()) {
+            if (request.statusCode() != 200) throw new IOException("Download returned HTTP " + request.statusCode() + ": " + uri);
+            return request.text();
+        }
+    }
+
     @Override
     protected Release latest() throws IOException {
         try {
-            final JsonObject release = JSONTool.parse(IOTool.httpsText(API, 2L * 1024 * 1024), JsonObject.class);
+            final JsonObject release = JSONTool.parse(fetch(API), JsonObject.class);
             final String version = release.get("tag_name").getAsString();
             JsonObject binary = null;
             URI checksums = null;
@@ -35,7 +45,7 @@ public final class YtDlpBinary extends ExecutableBinary {
                 else if ("SHA2-256SUMS".equals(name)) checksums = URI.create(asset.get("browser_download_url").getAsString());
             }
             if (binary == null || checksums == null) throw new IOException("yt-dlp release lacks its executable or mandatory SHA2-256SUMS");
-            final String expected = checksum(IOTool.httpsText(checksums, 2L * 1024 * 1024), this.name);
+            final String expected = checksum(fetch(checksums), this.name);
             if (binary.has("digest") && !binary.get("digest").isJsonNull()
                     && !binary.get("digest").getAsString().equalsIgnoreCase("sha256:" + expected)) {
                 throw new IOException("yt-dlp asset digest disagrees with SHA2-256SUMS");
