@@ -83,8 +83,8 @@ This module depends on WaterMedia and must be checked out in its `binaries/` sub
 WaterMedia compiles the shared sources together; each distribution JAR contains only its own classes.
 `WaterMedia.start(...)` loads `WaterMediaBinaries` as a module after the configuration, before the
 network and media modules. A failed installed module ends the load. Applications embedding the Java
-API can omit the module without losing image support. Dedicated servers skip it, and disabling
-FFmpeg skips native extraction. The load happens once per process: the published native paths and
+API can omit the module without losing image support. On a dedicated server the module does nothing,
+and disabling FFmpeg skips native extraction. The load happens once per process: the published native paths and
 loaded native files stay for its whole life.
 Each FFmpeg startup verifies every installed library against the bundled SHA-256 manifest. Repairs
 and upgrades create a separate installation and publish it only after complete verification.

@@ -18,9 +18,13 @@ public final class WaterMediaBinaries extends WaterMediaModule {
     public static final Logger LOGGER = WaterMedia.logger(ID);
     private static volatile Map<String, Path> paths = Map.of();
 
+    public WaterMediaBinaries(final WaterMedia watermedia) { super(watermedia); }
+
     @Override
-    protected void start() throws IOException {
-        final Path root = WaterMedia.tmp();
+    public void start() throws IOException {
+        // A DEDICATED SERVER PLAYS NOTHING, SO IT NEVER PROVISIONS THE NATIVES
+        if (!this.watermedia.clientSide) return;
+        final Path root = this.watermedia.tmp;
         paths = Map.of(YTDLP_ID, root.resolve(YTDLP_ID), BOTGUARD_ID, root.resolve(BOTGUARD_ID));
         if (WaterMediaConfig.media.ffmpeg.disable) return;
         final Path installed = FFmpegBinaries.start(root.resolve(FFMPEG_ID));
