@@ -87,7 +87,7 @@ abstract sealed class ExecutableBinary permits YtDlpBinary, BotGuardBinary {
                 try {
                     final Path archive = stage.resolve("download");
                     // FIXED LIMITS, INDEPENDENT OF THE USER'S NETWORK SETTINGS: A ZERO REDIRECT CAP WOULD BREAK EVERY GITHUB ASSET
-                    try (final NetRequest request = NetRequest.create(release.url).httpsOnly().maxBytes(512L << 20).deadline(180_000L)
+                    try (final NetRequest request = new NetRequest(release.url).httpsOnly().maxBytes(512L << 20).deadline(180_000L)
                             .maxRedirects(8).connectTimeout(15_000).readTimeout(15_000).send()) {
                         request.download(archive, release.sha256);
                     }

@@ -24,7 +24,7 @@ public final class YtDlpBinary extends ExecutableBinary {
 
     // BOUNDED HTTPS TEXT WITH FIXED LIMITS, INDEPENDENT OF THE USER'S NETWORK SETTINGS: EVERY HOP MUST BE HTTPS
     private static String fetch(final URI uri) throws IOException {
-        try (final NetRequest request = NetRequest.create(uri).httpsOnly().maxBytes(2L << 20).deadline(180_000L)
+        try (final NetRequest request = new NetRequest(uri).httpsOnly().maxBytes(2L << 20).deadline(180_000L)
                 .maxRedirects(8).connectTimeout(15_000).readTimeout(15_000).send()) {
             if (request.statusCode() != 200) throw new IOException("Download returned HTTP " + request.statusCode() + ": " + uri);
             return request.text();
