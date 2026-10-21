@@ -10,10 +10,7 @@ dependency versions are pinned in `gradle.properties`. The Maven build also prod
 (`ffmpeg/target/ffmpeg.jar`) that match those JNI libraries: each candidate carries its copy as
 `ffmpeg-<version>.jar`, the repacker installs the first verified one as `libs/ffmpeg-<version>.jar`, and the
 core merges that file into its jar instead of the Maven Central artifact.
-Until every platform is rebuilt from the fork, `libs/ffmpeg-<version>.jar` and the Windows
-`jniavutil.dll` come from a local build of that commit (see `windows.native.jniavutil.dll.source` in the manifest);
-the other platforms keep the previous JNI libraries, where the Vulkan bindings do not link and players
-decode off the device.
+All five archives and `libs/ffmpeg-<version>.jar` come from the `FFmpeg Rebuild` workflow run over that commit.
 The default LGPL recipe removes x264 and x265 variables, downloads, extraction and all 13 platform build
 blocks. It never passes `--enable-gpl`; `--enable-version3` remains required by the enabled dependencies.
 To select GPL, set `ffmpeg_variant=gpl` and the corresponding `ffmpeg_license` in `gradle.properties`.
