@@ -44,6 +44,8 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           brew install autoconf autoconf-archive automake libtool pkgconf nasm ninja meson ragel gcc@13 vulkan-headers vulkan-loader
+          # THE JNI BUILD INCLUDES hwcontext_vulkan.h, WHICH NEEDS vulkan/vulkan.h; APPLE SILICON KEEPS HOMEBREW OFF THE DEFAULT INCLUDE PATH
+          echo "CPATH=$(brew --prefix)/include" >> "$GITHUB_ENV"
           echo "GCC_LIBRARY_PATH=$(brew --prefix gcc@13)/lib/gcc/13" >> "$GITHUB_ENV"
           echo "LIBRARY_PATH=$(brew --prefix gcc@13)/lib/gcc/13" >> "$GITHUB_ENV"
           echo "DYLD_LIBRARY_PATH=$(brew --prefix gcc@13)/lib/gcc/13" >> "$GITHUB_ENV"
