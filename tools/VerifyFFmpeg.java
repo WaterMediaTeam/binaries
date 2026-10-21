@@ -3,6 +3,7 @@ import org.bytedeco.ffmpeg.avformat.AVIOContext;
 import org.bytedeco.ffmpeg.avutil.AVDictionary;
 import org.bytedeco.ffmpeg.global.*;
 import org.bytedeco.javacpp.BytePointer;
+import org.bytedeco.javacpp.IntPointer;
 import org.bytedeco.javacpp.Pointer;
 import org.bytedeco.javacpp.PointerPointer;
 import java.nio.charset.StandardCharsets;
@@ -28,6 +29,11 @@ public final class VerifyFFmpeg {
         avfilter.avfilter_version();
         swscale.swscale_version();
         swresample.swresample_version();
+        // THE hwcontext_vulkan BINDINGS MUST LINK: WATERMEDIA DECODES ON ITS VULKAN DEVICE THROUGH THEM
+        final var extensionCount = new IntPointer(1);
+        final var extensions = avutil_vulkan.av_vk_get_optional_device_extensions(extensionCount);
+        if (extensions == null || extensions.isNull() || extensionCount.get() <= 0) throw new IllegalStateException("FFmpeg lists no optional Vulkan device extensions");
+        avutil.av_free(extensions);
         final String[] licenses = {avutil.avutil_license().getString(), avcodec.avcodec_license().getString(),
                 avformat.avformat_license().getString(), avdevice.avdevice_license().getString(),
                 avfilter.avfilter_license().getString(), swscale.swscale_license().getString(),
@@ -140,6 +146,6 @@ public final class VerifyFFmpeg {
             }
         }
         System.out.println("Verified FFmpeg " + version + " (" + licenses[0] + "), libxml2 " + args[1]
-                + ", OpenSSL " + args[2] + ", seven JNI components, DASH, malformed XML and MPEG stream-count boundaries");
+                + ", OpenSSL " + args[2] + ", seven JNI components, the Vulkan bindings, DASH, malformed XML and MPEG stream-count boundaries");
     }
 }

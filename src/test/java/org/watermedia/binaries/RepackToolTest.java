@@ -53,7 +53,12 @@ class RepackToolTest {
             assertEquals("lgpl", manifest.getProperty("variant"));
             assertEquals("LGPL-3.0-or-later", manifest.getProperty("license"));
             assertEquals("rebuilt", manifest.getProperty("source.kind"));
+            // THE JAVA WRAPPERS OF THE FIRST VERIFIED PLATFORM SHIP NEXT TO THE CORE'S DEPENDENCY, THEIR HASH IN THE MANIFEST
+            assertEquals("wrapper of linux-x86_64", Files.readString(this.directory.resolve("libs/ffmpeg-" + manifest.getProperty("version") + ".jar")));
+            assertEquals(manifest.getProperty("linux.wrapper.sha256"), manifest.getProperty("wrapper.sha256"));
+            assertEquals("SrRapero720/javacpp-presets", manifest.getProperty("source.repository"));
             for (final String archive: ARCHIVES) {
+                assertEquals(64, manifest.getProperty(archive + ".wrapper.sha256").length());
                 assertFalse(manifest.getProperty(archive + ".source").contains("-gpl"));
                 try (final var zip = new ZipFile(this.directory.resolve("src/main/resources/libs/ffmpeg-" + archive + ".zip").toFile())) {
                     final var entries = zip.stream().toList();
@@ -286,13 +291,18 @@ class RepackToolTest {
                     output.closeEntry();
                 }
             }
+            final Path wrapper = candidate.resolve("ffmpeg-" + properties.getProperty("ffmpeg_version") + ".jar");
+            Files.writeString(wrapper, "wrapper of " + platform);
             final Properties record = new Properties();
             record.setProperty("version", properties.getProperty("ffmpeg_version"));
             record.setProperty("platform", platform);
             record.setProperty("archive", name);
             record.setProperty("archive.sha256", HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(jar))));
+            record.setProperty("wrapper", wrapper.getFileName().toString());
+            record.setProperty("wrapper.sha256", HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(wrapper))));
             record.setProperty("variant", properties.getProperty("ffmpeg_variant"));
             record.setProperty("license", properties.getProperty("ffmpeg_license"));
+            record.setProperty("source.repository", properties.getProperty("ffmpeg_source_repository"));
             record.setProperty("source.ref", properties.getProperty("ffmpeg_source_ref"));
             record.setProperty("source.commit", properties.getProperty("ffmpeg_source_commit"));
             record.setProperty("source.sha256", properties.getProperty("ffmpeg_source_sha256"));
@@ -307,8 +317,8 @@ class RepackToolTest {
             }
             record.setProperty("recipe.sha256", "0".repeat(64));
             record.setProperty("verification", invalidFinal && i == platforms.length - 1 ? "missing-TLS"
-                    : gpl ? "JNI-original-wrappers,DASH,recursive-entities,imports-closure,clean-environment,TLS,HTTP-headers,GPL,libx264"
-                    : "JNI-original-wrappers,DASH,recursive-entities,libxml2-version,openssl-version,imports-closure,clean-environment,TLS,HTTP-headers,LGPL,no-x264,no-x265");
+                    : gpl ? "JNI-wrappers,vulkan-bindings,DASH,recursive-entities,imports-closure,clean-environment,TLS,HTTP-headers,GPL,libx264"
+                    : "JNI-wrappers,vulkan-bindings,DASH,recursive-entities,libxml2-version,openssl-version,imports-closure,clean-environment,TLS,HTTP-headers,LGPL,no-x264,no-x265");
             try (final var output = Files.newOutputStream(candidate.resolve("build.properties"))) { record.store(output, null); }
         }
         return candidates;

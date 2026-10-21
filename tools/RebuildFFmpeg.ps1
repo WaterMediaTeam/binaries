@@ -25,13 +25,14 @@ $securityPatch = Join-Path $PSScriptRoot 'ffmpeg-security.patch'
 if ($properties.ffmpeg_security_patch_sha256 -notmatch '^[a-f0-9]{64}$' -or (Get-FileHash -LiteralPath $securityPatch -Algorithm SHA256).Hash -ine $properties.ffmpeg_security_patch_sha256) { throw 'Native security patch SHA-256 mismatch' }
 $headersPatch = Join-Path $PSScriptRoot 'ffmpeg-headers.patch'
 if ($properties.ffmpeg_headers_patch_sha256 -notmatch '^[a-f0-9]{64}$' -or (Get-FileHash -LiteralPath $headersPatch -Algorithm SHA256).Hash -ine $properties.ffmpeg_headers_patch_sha256) { throw 'Native HTTP headers patch SHA-256 mismatch' }
-if ($revision -notmatch '^[a-f0-9]{40}$' -or $sourceCommit -notmatch '^[a-f0-9]{40}$' -or $xmlVersion -notmatch '^\d+\.\d+\.\d+$' -or $sslVersion -notmatch '^\d+\.\d+\.\d+$' -or $variant -cnotin @('lgpl', 'gpl') -or [string]::IsNullOrWhiteSpace($properties.ffmpeg_license)) {
-    throw 'Native source revisions, build variant and license metadata must be declared in gradle.properties'
+$repository = $properties.ffmpeg_source_repository
+if ($repository -cnotmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' -or $revision -notmatch '^[a-f0-9]{40}$' -or $sourceCommit -notmatch '^[a-f0-9]{40}$' -or $xmlVersion -notmatch '^\d+\.\d+\.\d+$' -or $sslVersion -notmatch '^\d+\.\d+\.\d+$' -or $variant -cnotin @('lgpl', 'gpl') -or [string]::IsNullOrWhiteSpace($properties.ffmpeg_license)) {
+    throw 'Native source repository and revisions, build variant and license metadata must be declared in gradle.properties'
 }
 $work = Join-Path $root 'build/native-rebuild'
 [IO.Directory]::CreateDirectory($work) | Out-Null
 $sourceArchive = Join-Path $work "javacpp-presets-$revision.zip"
-$sourceUrl = "https://github.com/bytedeco/javacpp-presets/archive/$revision.zip"
+$sourceUrl = "https://github.com/$repository/archive/$revision.zip"
 $xmlArchive = Join-Path $work "libxml2-$xmlVersion.tar.xz"
 $xmlSeries = ($xmlVersion -split '\.')[0..1] -join '.'
 $xmlUrl = "https://download.gnome.org/sources/libxml2/$xmlSeries/libxml2-$xmlVersion.tar.xz"
@@ -393,11 +394,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Rebuilt FFmpeg cannot produce the DASH regression fixture' }
 } finally { Pop-Location }
 $javaVersion = $properties.ffmpeg_version.Split('-')[1]
-$wrapper = Join-Path $work "ffmpeg-$($properties.ffmpeg_version).jar"
-if (!(Test-Path -LiteralPath $wrapper)) {
-    Invoke-WebRequest "https://repo.maven.apache.org/maven2/org/bytedeco/ffmpeg/$($properties.ffmpeg_version)/ffmpeg-$($properties.ffmpeg_version).jar" -OutFile $wrapper
-}
-if ((Get-FileHash -LiteralPath $wrapper -Algorithm SHA256).Hash -ine $properties.ffmpeg_wrapper_sha256) { throw 'Original FFmpeg wrapper SHA-256 mismatch' }
+# THE JAVA WRAPPERS COME OUT OF THE SAME MAVEN BUILD AS THE JNI LIBRARIES, SO BOTH CARRY THE PRESET'S BINDINGS (hwcontext_vulkan INCLUDED)
+$wrapper = Join-Path $source 'ffmpeg/target/ffmpeg.jar'
 $javaCpp = Join-Path ([Environment]::GetFolderPath('UserProfile')) ".m2/repository/org/bytedeco/javacpp/$javaVersion/javacpp-$javaVersion.jar"
 if (!(Test-Path -LiteralPath $wrapper) -or !(Test-Path -LiteralPath $javaCpp)) { throw 'Native smoke-test Java dependencies are missing' }
 if ((Get-FileHash -LiteralPath $javaCpp -Algorithm SHA256).Hash -ine $properties.javacpp_sha256) { throw 'JavaCPP runtime SHA-256 mismatch' }
@@ -441,15 +439,18 @@ foreach ($probe in @(
 }
 $output = Join-Path $root "build/rebuilt/$Platform"
 [IO.Directory]::CreateDirectory($output) | Out-Null
+$wrapperName = "ffmpeg-$($properties.ffmpeg_version).jar"
 foreach ($stale in Get-ChildItem -LiteralPath $output -Filter 'ffmpeg-*.jar' -File) {
-    if ($stale.Name -cne $classifier) { [IO.File]::Delete($stale.FullName) }
+    if ($stale.Name -cne $classifier -and $stale.Name -cne $wrapperName) { [IO.File]::Delete($stale.FullName) }
 }
 Copy-Item -LiteralPath $jar -Destination (Join-Path $output $classifier) -Force
+Copy-Item -LiteralPath $wrapper -Destination (Join-Path $output $wrapperName) -Force
 $lines = @(
     "version=$($properties.ffmpeg_version)",
     "platform=$Platform",
     "variant=$($properties.ffmpeg_variant)",
     "license=$($properties.ffmpeg_license)",
+    "source.repository=$repository",
     "source.ref=$revision",
     "source.commit=$sourceCommit",
     "source.sha256=$($properties.ffmpeg_source_sha256)",
@@ -461,9 +462,11 @@ $lines = @(
     "security.patch.sha256=$($properties.ffmpeg_security_patch_sha256)",
     "headers.patch.sha256=$($properties.ffmpeg_headers_patch_sha256)",
     "recipe.sha256=$((Get-FileHash -LiteralPath (Join-Path $source 'ffmpeg/cppbuild.sh') -Algorithm SHA256).Hash.ToLowerInvariant())",
-    "verification=JNI-original-wrappers,DASH,recursive-entities,libxml2-version,openssl-version,imports-closure,clean-environment,TLS,HTTP-headers,$(if ($variant -ceq 'gpl') { 'GPL,libx264,libx265' } else { 'LGPL,no-x264,no-x265' })",
+    "verification=JNI-wrappers,vulkan-bindings,DASH,recursive-entities,libxml2-version,openssl-version,imports-closure,clean-environment,TLS,HTTP-headers,$(if ($variant -ceq 'gpl') { 'GPL,libx264,libx265' } else { 'LGPL,no-x264,no-x265' })",
     "archive=$classifier",
-    "archive.sha256=$((Get-FileHash -LiteralPath $jar -Algorithm SHA256).Hash.ToLowerInvariant())"
+    "archive.sha256=$((Get-FileHash -LiteralPath $jar -Algorithm SHA256).Hash.ToLowerInvariant())",
+    "wrapper=$wrapperName",
+    "wrapper.sha256=$((Get-FileHash -LiteralPath $wrapper -Algorithm SHA256).Hash.ToLowerInvariant())"
 )
 [IO.File]::WriteAllLines((Join-Path $output 'build.properties'), $lines, [Text.UTF8Encoding]::new($false))
 [IO.File]::WriteAllLines((Join-Path $output 'dependencies.txt'), $imports, [Text.UTF8Encoding]::new($false))

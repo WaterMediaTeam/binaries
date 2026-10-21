@@ -30,7 +30,9 @@ sourceSets {
 def providerProperties = new Properties()
 file('../gradle.properties').withInputStream(providerProperties.&load)
 dependencies {
-    toolsCompileOnly "org.bytedeco:ffmpeg:${providerProperties.ffmpeg_version}"
+    // THE API JAR OF THE REBUILT PRESET (SEE tools/NATIVE_REBUILD.md); THE CORE MERGES THE SAME FILE INTO ITS JAR
+    toolsCompileOnly files('libs/ffmpeg-' + providerProperties.ffmpeg_version + '.jar')
+    toolsCompileOnly "org.bytedeco:javacpp:${providerProperties.ffmpeg_version.tokenize('-')[1]}"
     library 'org.watermedia:watermedia'
     implementation "org.tukaani:xz:$xz_version"
 }

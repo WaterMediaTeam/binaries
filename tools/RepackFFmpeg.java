@@ -60,6 +60,7 @@ public final class RepackFFmpeg {
         final var manifest = new StringBuilder("version=" + version + "\nvariant=" + variant + "\nlicense=" + license + "\ncompression=DEFLATE\nlevel=" + level + "\n");
         manifest.append("source.kind=rebuilt\n");
         final Map<String, String> metadata = new LinkedHashMap<>();
+        metadata.put("ffmpeg_source_repository", "source.repository");
         metadata.put("ffmpeg_source_ref", "source.ref");
         metadata.put("ffmpeg_source_commit", "source.commit");
         metadata.put("ffmpeg_source_sha256", "source.sha256");
@@ -80,6 +81,7 @@ public final class RepackFFmpeg {
             manifest.append(entry.getValue()).append('=').append(value).append('\n');
         }
 
+        Path wrapper = null;
         for (final var platform: platforms.entrySet()) {
             final URI uri;
             final Path source;
@@ -93,7 +95,7 @@ public final class RepackFFmpeg {
             final String name = record.getProperty("archive", "");
             final String verification = record.getProperty("verification", "");
             final Set<String> checks = new HashSet<>(List.of(verification.split(",", -1)));
-            final Set<String> requiredChecks = Set.of("JNI-original-wrappers", "DASH", "recursive-entities",
+            final Set<String> requiredChecks = Set.of("JNI-wrappers", "vulkan-bindings", "DASH", "recursive-entities",
                     "imports-closure", "clean-environment", "TLS", "HTTP-headers");
             if (!version.equals(record.getProperty("version")) || !platform.getValue().equals(record.getProperty("platform"))
                         || !name.matches(Pattern.quote(base) + "(?:-[A-Za-z0-9_+.-]+)?\\.jar")
@@ -122,6 +124,13 @@ public final class RepackFFmpeg {
             }
             expected = hash(source, "SHA-1");
             uri = URI.create("rebuilt:" + properties.getProperty("ffmpeg_source_ref", version) + "/" + name);
+            // THE JAVA WRAPPERS OF THE SAME BUILD, VERIFIED AGAINST THESE NATIVES; THE FIRST PLATFORM'S COPY SHIPS NEXT TO THE CORE
+            final String wrapperHash = record.getProperty("wrapper.sha256", "");
+            final Path wrapperFile = candidate.resolve(record.getProperty("wrapper", ""));
+            if (!("ffmpeg-" + version + ".jar").equals(record.getProperty("wrapper")) || !wrapperHash.matches("[a-fA-F0-9]{64}")
+                    || !hash(wrapperFile, "SHA-256").equalsIgnoreCase(wrapperHash))
+                throw new IOException("Candidate Java wrapper SHA-256 mismatch: " + candidate);
+            if (wrapper == null) wrapper = wrapperFile;
 
             final String extension = name.substring(base.length(), name.length() - ".jar".length());
             final String prefix = "org/bytedeco/ffmpeg/" + platform.getValue() + extension + "/";
@@ -214,6 +223,7 @@ public final class RepackFFmpeg {
                     .append(key).append(".archive.bytes=").append(Files.size(output)).append('\n')
                     .append(key).append(".libraries=").append(hashes.size()).append('\n');
             manifest.append(key).append(".recipe.sha256=").append(recipeHash.toLowerCase(Locale.ROOT)).append('\n');
+            manifest.append(key).append(".wrapper.sha256=").append(wrapperHash.toLowerCase(Locale.ROOT)).append('\n');
             for (final var library: hashes.entrySet()) {
                 manifest.append(key).append(".native.").append(library.getKey()).append(".sha256=").append(library.getValue()).append('\n');
             }
@@ -230,6 +240,10 @@ public final class RepackFFmpeg {
                 Files.move(staging.resolve(file), output, StandardCopyOption.REPLACE_EXISTING);
             }
         }
+        final Path library = Files.createDirectories(root.resolve("libs")).resolve("ffmpeg-" + version + ".jar");
+        if (!Files.isRegularFile(library) || !hash(library, "SHA-256").equals(hash(wrapper, "SHA-256")))
+            Files.copy(wrapper, library, StandardCopyOption.REPLACE_EXISTING);
+        manifest.append("\nwrapper.sha256=").append(hash(library, "SHA-256")).append('\n');
         final Path record = tools.resolve("ffmpeg-manifest.properties");
         if (!Files.isRegularFile(record) || !Files.readString(record).contentEquals(manifest)) {
             Files.writeString(record, manifest, StandardCharsets.UTF_8);

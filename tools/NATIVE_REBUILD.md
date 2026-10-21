@@ -2,9 +2,18 @@
 
 The original Maven `8.1.2-1.5.14` classifiers contain statically linked libxml2 2.9.12 and OpenSSL 3.5.7.
 `RebuildFFmpeg.ps1` retains the FFmpeg/JavaCPP coordinate and prepares the suffix-free LGPL recipe with
-libxml2 2.15.4 and OpenSSL 3.5.8. The annotated tag object, source archive hashes and native dependency
-versions are pinned in `gradle.properties`; the source archive resolves to preset commit
-`d57d8a28635211e174df378611cb1952f751c943`.
+libxml2 2.15.4 and OpenSSL 3.5.8. The preset sources come from the `ffmpeg_source_repository` fork
+(`SrRapero720/javacpp-presets`, branch `ffmpeg-vulkan-1.5.14`), which adds the `avutil_vulkan` bindings of
+`libavutil/hwcontext_vulkan.h` (`AVVulkanDeviceContext`, `AVVulkanFramesContext`, `AVVkFrame`) on top of tag
+`1.5.14` so WaterMedia can decode on its own Vulkan device; the commit, source archive hash and native
+dependency versions are pinned in `gradle.properties`. The Maven build also produces the Java wrappers
+(`ffmpeg/target/ffmpeg.jar`) that match those JNI libraries: each candidate carries its copy as
+`ffmpeg-<version>.jar`, the repacker installs the first verified one as `libs/ffmpeg-<version>.jar`, and the
+core merges that file into its jar instead of the Maven Central artifact.
+Until every platform is rebuilt from the fork, `libs/ffmpeg-<version>.jar` and the Windows
+`jniavutil.dll` come from a local build of that commit (see `windows.native.jniavutil.dll.source` in the manifest);
+the other platforms keep the previous JNI libraries, where the Vulkan bindings do not link and players
+decode off the device.
 The default LGPL recipe removes x264 and x265 variables, downloads, extraction and all 13 platform build
 blocks. It never passes `--enable-gpl`; `--enable-version3` remains required by the enabled dependencies.
 To select GPL, set `ffmpeg_variant=gpl` and the corresponding `ffmpeg_license` in `gradle.properties`.
@@ -57,8 +66,8 @@ portable install names and signatures are written. Linux x64 passes the verified
 library directories to JavaCPP so VA, VA-DRM and DRM are included in the archive.
 
 Before a candidate is exported, the script generates a local H.264 DASH fixture and launches a fresh
-Java process using the original, checksum-pinned Maven Java wrappers. It must load all seven JNI
-components, confirm the selected recipe's actual licenses, flags and encoders, identify
+Java process using the Java wrappers of the same Maven build. It must load all seven JNI
+components, link the Vulkan bindings of libavutil, confirm the selected recipe's actual licenses, flags and encoders, identify
 the expected embedded libxml2 and OpenSSL versions, encode the fixture with OpenH264 for LGPL or x264 for GPL, parse the DASH
 fixture and reject a recursive-entity manifest. This process receives only the packaged native
 directory, JDK and operating-system paths; compiler directories and inherited Java options are removed.
@@ -108,10 +117,12 @@ java tools/RepackFFmpeg.java . build/rebuilt
 
 The repacker requires matching source/version/verification records and candidate SHA-256 hashes,
 then verifies every native file after DEFLATE level 9 compression. It records rebuilt provenance in
-the shared runtime manifest. Once rebuilt natives are installed, running the repacker without a
-candidate directory fails instead of silently replacing them with the original Maven binaries.
+the shared runtime manifest, with the SHA-256 of each platform's Java wrappers, and installs the first
+platform's wrappers as `libs/ffmpeg-<version>.jar`. Once rebuilt natives are installed, running the
+repacker without a candidate directory fails instead of silently replacing them with the original Maven binaries.
 
-Sources: [JavaCPP Presets 1.5.14](https://github.com/bytedeco/javacpp-presets/tree/1.5.14),
+Sources: [JavaCPP Presets fork with the Vulkan bindings](https://github.com/SrRapero720/javacpp-presets/tree/ffmpeg-vulkan-1.5.14)
+on [JavaCPP Presets 1.5.14](https://github.com/bytedeco/javacpp-presets/tree/1.5.14),
 [libxml2 2.15.4 release notes](https://download.gnome.org/sources/libxml2/2.15/libxml2-2.15.4.news),
 [OpenSSL August 2026 advisory](https://mirror.openssl-library.org/news/secadv/20260825.txt).
 

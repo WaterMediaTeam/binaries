@@ -156,6 +156,7 @@ jobs:
           name: ffmpeg-native
           path: |
             src/main/resources/libs/ffmpeg-*.zip
+            libs/ffmpeg-*.jar
             tools/ffmpeg-manifest.properties
           if-no-files-found: error
           compression-level: 0
