@@ -55,8 +55,9 @@ VDPAU remains disabled as in the original Linux classifiers, keeping their exist
 
 Maven runs the complete JavaCPP preset in three phases: compile and install the selected FFmpeg profile
 with its static codec dependencies, parse its headers, then compile all seven JNI libraries with `copyLibs` and
-`copyResources`. A standalone FFmpeg CLI build cannot replace these classifier JARs. Linux preparation
-also provides pinned Vulkan headers and the ARM64 Raspberry Pi userland expected by the original preset.
+`copyResources`. A standalone FFmpeg CLI build cannot replace these classifier JARs. The recipe stages its
+own pinned Vulkan headers, so the JNI build never depends on the host's; the linux-arm64 job additionally
+builds the Raspberry Pi userland the preset links there.
 On macOS, the GCC library directory is passed directly to Maven so JavaCPP packages `libatomic`.
 The macOS Maven profile reserves Mach-O header space with `-headerpad_max_install_names` before
 portable install names and signatures are written. Linux x64 passes the verified compiler multiarch

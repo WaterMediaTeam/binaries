@@ -38,14 +38,12 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential autoconf autoconf-archive automake libtool pkg-config nasm ninja-build meson ragel unzip zip xz-utils libva-dev libdrm-dev libasound2-dev libpulse-dev libxcb1-dev libvulkan-dev libx11-dev
+          sudo apt-get install -y build-essential autoconf autoconf-archive automake libtool pkg-config nasm ninja-build meson ragel unzip zip xz-utils libva-dev libdrm-dev libasound2-dev libpulse-dev libxcb1-dev libx11-dev
 
       - name: Install macOS build prerequisites
         if: runner.os == 'macOS'
         run: |
-          brew install autoconf autoconf-archive automake libtool pkgconf nasm ninja meson ragel gcc@13 vulkan-headers vulkan-loader
-          # THE JNI BUILD INCLUDES hwcontext_vulkan.h, WHICH NEEDS vulkan/vulkan.h; APPLE SILICON KEEPS HOMEBREW OFF THE DEFAULT INCLUDE PATH
-          echo "CPATH=$(brew --prefix)/include" >> "$GITHUB_ENV"
+          brew install autoconf autoconf-archive automake libtool pkgconf nasm ninja meson ragel gcc@13
           echo "GCC_LIBRARY_PATH=$(brew --prefix gcc@13)/lib/gcc/13" >> "$GITHUB_ENV"
           echo "LIBRARY_PATH=$(brew --prefix gcc@13)/lib/gcc/13" >> "$GITHUB_ENV"
           echo "DYLD_LIBRARY_PATH=$(brew --prefix gcc@13)/lib/gcc/13" >> "$GITHUB_ENV"
@@ -56,7 +54,7 @@ jobs:
         run: |
           & C:/msys64/usr/bin/bash.exe -lc 'pacman -Syu --noconfirm'
           & C:/msys64/usr/bin/bash.exe -lc 'pacman -Syu --noconfirm'
-          & C:/msys64/usr/bin/bash.exe -lc 'pacman -S --needed --noconfirm base-devel git unzip zip autoconf autoconf-archive automake libtool make patch diffutils mingw-w64-x86_64-gcc mingw-w64-x86_64-ninja mingw-w64-x86_64-pkgconf mingw-w64-x86_64-libtool mingw-w64-x86_64-meson mingw-w64-x86_64-nasm mingw-w64-x86_64-vulkan-headers mingw-w64-x86_64-vulkan-loader mingw-w64-x86_64-SDL2 mingw-w64-x86_64-ragel'
+          & C:/msys64/usr/bin/bash.exe -lc 'pacman -S --needed --noconfirm base-devel git unzip zip autoconf autoconf-archive automake libtool make patch diffutils mingw-w64-x86_64-gcc mingw-w64-x86_64-ninja mingw-w64-x86_64-pkgconf mingw-w64-x86_64-libtool mingw-w64-x86_64-meson mingw-w64-x86_64-nasm mingw-w64-x86_64-SDL2 mingw-w64-x86_64-ragel'
           if ($LASTEXITCODE -ne 0) { throw 'MSYS2 prerequisites failed' }
           Add-Content $env:GITHUB_PATH 'C:/msys64/usr/bin'
           Add-Content $env:GITHUB_PATH 'C:/msys64/mingw64/bin'
@@ -67,10 +65,10 @@ jobs:
         shell: pwsh
         run: ./tools/SetupNativeTools.ps1 -Platform '${{ matrix.platform }}'
 
-      - name: Prepare Linux native dependencies
-        if: runner.os == 'Linux'
+      - name: Prepare the Raspberry Pi userland
+        if: matrix.platform == 'linux-arm64'
         shell: pwsh
-        run: ./tools/SetupLinuxNative.ps1 -Platform '${{ matrix.platform }}'
+        run: ./tools/SetupLinuxNative.ps1
 
       - name: Rebuild and verify native classifier
         shell: pwsh
