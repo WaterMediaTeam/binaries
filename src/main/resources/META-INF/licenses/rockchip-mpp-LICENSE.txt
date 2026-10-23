@@ -1,0 +1,6 @@
+Rockchip MPP (Media Process Platform, https://github.com/rockchip-linux/mpp) provides the Rockchip hardware
+video codecs used by FFmpeg's rkmpp decoders and encoders. It is linked statically into libavcodec.so.62,
+only in the Linux ARM64 archive, built from the MPP 1.1.0 release that the JavaCPP preset recipe downloads.
+Copyright (c) Rockchip Electronics Co., Ltd. Its sources are licensed under the Apache License, Version 2.0,
+some of them alternatively under the MIT license; WaterMedia distributes MPP under the Apache License,
+Version 2.0, whose full text is reproduced in javacpp-LICENSE.txt. The MPP release carries no NOTICE file.

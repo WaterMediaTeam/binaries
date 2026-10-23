@@ -65,7 +65,8 @@ pinned Vulkan-Headers release (`vulkan_headers_version`, the Vulkan SDK release 
 its `include` directory first on `CPATH`, so FFmpeg's configure and the JNI build of `jniavutil`
 (`hwcontext_vulkan.h`) use the same headers on every host without Vulkan packages; FFmpeg loads the Vulkan
 loader at runtime, so nothing links against it. The linux-arm64 job additionally builds the Raspberry Pi
-userland the preset links there.
+userland the preset loads there; its recipe links Rockchip MPP statically into libavcodec and enables V4L2
+request decoding over the system's DRM and udev libraries.
 On macOS, the GCC library directory is passed directly to Maven so JavaCPP packages `libatomic`.
 The macOS Maven profile reserves Mach-O header space with `-headerpad_max_install_names` before
 portable install names and signatures are written. Linux x64 passes the verified compiler multiarch
@@ -96,9 +97,9 @@ restrictions remain unchanged. Proxy settings are removed from the loopback veri
 
 The Linux runtime contract matches the original classifiers: glibc and C/C++ runtimes, udev,
 PulseAudio, XCB, ALSA, VA-API and DRM may come from the operating system. Some are already packaged by
-the preset, depending on architecture. These device and display libraries are distinct from the
-statically linked codec, XML and TLS libraries. A minimal Linux container still needs those system
-packages; dependencies outside the declared set are rejected.
+the preset, depending on architecture; ARM64 takes VA-API, DRM and udev from the system. These device
+and display libraries are distinct from the statically linked codec, XML and TLS libraries. A minimal
+Linux container still needs those system packages; dependencies outside the declared set are rejected.
 
 Each classifier must also preserve the original packaged inventory: seven FFmpeg libraries and seven
 JNI bridges, plus VA/VA-DRM/DRM on Linux x64, ALSA/Broadcom/VCOS/VCHIQ on Linux ARM64, `libatomic` on

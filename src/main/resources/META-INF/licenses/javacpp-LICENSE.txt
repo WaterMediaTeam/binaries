@@ -1,6 +1,6 @@
 JavaCPP (org.bytedeco:javacpp, https://github.com/bytedeco/javacpp) provides the native JNI glue
-libraries (jni*/libjni*) that bridge Java to the FFmpeg native libraries. These prebuilt JNI
-libraries are reused from the JavaCPP/Bytedeco FFmpeg distribution and are bundled inside this jar
+libraries (jni*/libjni*) that bridge Java to the FFmpeg native libraries. These JNI libraries
+are built together with FFmpeg from the pinned JavaCPP preset source and are bundled inside this jar
 as part of the per-platform archives under /libs. JavaCPP is multi-licensed (Apache License 2.0,
 GPLv2, or GPLv2 with the Classpath exception); WaterMedia uses it under the Apache License,
 Version 2.0. Copyright (C) Samuel Audet and the JavaCPP contributors.

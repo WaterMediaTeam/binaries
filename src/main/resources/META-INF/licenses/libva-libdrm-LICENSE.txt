@@ -1,6 +1,6 @@
 libva and libva-drm (https://github.com/intel/libva) provide the VA-API video-acceleration runtime,
 and libdrm (https://gitlab.freedesktop.org/mesa/drm) provides the Direct Rendering Manager runtime.
-These libraries are bundled, only in the Linux archives (libva.so.2, libva-drm.so.2, libdrm.so.2),
+These libraries are bundled, only in the Linux x64 archive (libva.so.2, libva-drm.so.2, libdrm.so.2),
 alongside the FFmpeg native libraries. They are licensed under the MIT (X11) license. Copyright is
 held by Intel Corporation (libva) and by Precision Insight, Inc., VA Linux Systems Inc., Intel
 Corporation, and other contributors (libdrm). The shared MIT (X11) terms (reproduced verbatim from
