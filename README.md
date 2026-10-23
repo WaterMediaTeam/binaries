@@ -24,7 +24,7 @@ This module requires WaterMedia; it has no independent startup lifecycle.
 | Android  | x86_64       |   ⛔    |
 
 ## 🧰 What is inside
-- **FFMPEG 8.1.2 natives** (LGPLv3+ build, JavaCPP 1.5.15-SNAPSHOT) — video and audio decoding without the GPL x264/x265 encoders
+- **FFMPEG 8.1.2 natives** (LGPLv3+ build, JavaCPP 1.5.14) — video and audio decoding without the GPL x264/x265 encoders
 - **JavaCPP JNI glue** — the bridge between the Java API and the natives
 - **yt-dlp and BotGuard provisioning** — verified executable downloads on first use
 
@@ -37,7 +37,7 @@ under `META-INF/licenses/`:
 - **LGPL-3.0-or-later** — FFmpeg, built with `--enable-version3` and without `--enable-gpl`, x264 or x265
 - **LGPL-2.1-or-later** — ALSA (Linux ARM64)
 - **GPL-3.0-or-later WITH GCC-exception-3.1** — libatomic on macOS and eligible GCC runtime portions
-- **Apache-2.0** — JavaCPP JNI glue; Rockchip MPP (Linux ARM64)
+- **Apache-2.0** — JavaCPP JNI glue
 - **MIT / X11** — libva, libva-drm and libdrm (Linux x64)
 - **BSD-3-Clause** — Raspberry Pi userland (Linux ARM64)
 - **MIT / BSD-3-Clause** — winpthreads (Windows)

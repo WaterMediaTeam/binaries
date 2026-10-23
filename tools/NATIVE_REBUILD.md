@@ -1,16 +1,14 @@
 # Native rebuilds
 
 The upstream recipe links libxml2 2.9.12 and OpenSSL 3.5.7 statically. `RebuildFFmpeg.ps1` retains the
-preset's FFmpeg/JavaCPP coordinate (`8.1.2-1.5.15-SNAPSHOT`) and prepares the suffix-free LGPL recipe with
+preset's FFmpeg/JavaCPP coordinate (`8.1.2-1.5.14`) and prepares the suffix-free LGPL recipe with
 libxml2 2.15.4 and OpenSSL 3.5.8. The preset sources come from the `ffmpeg_source_repository` fork
-(`SrRapero720/javacpp-presets`, branch `ffmpeg-vulkan`), which adds the `avutil_vulkan` bindings of
-`libavutil/hwcontext_vulkan.h` (`AVVulkanDeviceContext`, `AVVulkanFramesContext`, `AVVkFrame`) on top of the
-upstream master (`1.5.15-SNAPSHOT`) so WaterMedia can decode on its own Vulkan device; the commit, source archive
-hash and native dependency versions are pinned in `gradle.properties`. Maven resolves JavaCPP `1.5.15-SNAPSHOT`
-from the Central Portal snapshot repository and `javacpp_sha256` pins that snapshot jar, so a newer snapshot,
-or the portal's 90-day snapshot cleanup, requires a new hash.
-The script keeps OpenCL disabled: it drops the desktop override that master adds to the recipe (with its D3D11
-sharing check) and the OpenCL artifacts of the Maven project, so libavutil never requires an OpenCL loader.
+(`SrRapero720/javacpp-presets`, branch `ffmpeg-vulkan-1.5.14`), which maps `libavutil/hwcontext_vulkan.h` into the
+`avutil` preset (`AVVulkanDeviceContext`, `AVVulkanFramesContext`, `AVVkFrame` and the `av_vk_*` functions of
+`org.bytedeco.ffmpeg.global.avutil`) on top of tag `1.5.14` so WaterMedia can decode on its own Vulkan device; the
+commit, source archive hash and native dependency versions are pinned in `gradle.properties`. Maven resolves the
+JavaCPP `1.5.14` release from Maven Central and `javacpp_sha256` pins that jar. The recipe keeps OpenCL disabled,
+so libavutil never requires an OpenCL loader.
 The Maven build also produces the Java wrappers
 (`ffmpeg/target/ffmpeg.jar`) that match those JNI libraries: each candidate carries its copy as
 `ffmpeg-<version>.jar`, the repacker installs the first verified one as `libs/ffmpeg-<version>.jar`, and the
@@ -65,8 +63,7 @@ pinned Vulkan-Headers release (`vulkan_headers_version`, the Vulkan SDK release 
 its `include` directory first on `CPATH`, so FFmpeg's configure and the JNI build of `jniavutil`
 (`hwcontext_vulkan.h`) use the same headers on every host without Vulkan packages; FFmpeg loads the Vulkan
 loader at runtime, so nothing links against it. The linux-arm64 job additionally builds the Raspberry Pi
-userland the preset loads there; its recipe links Rockchip MPP statically into libavcodec and enables V4L2
-request decoding over the system's DRM and udev libraries.
+userland the preset loads there.
 On macOS, the GCC library directory is passed directly to Maven so JavaCPP packages `libatomic`.
 The macOS Maven profile reserves Mach-O header space with `-headerpad_max_install_names` before
 portable install names and signatures are written. Linux x64 passes the verified compiler multiarch
@@ -97,9 +94,9 @@ restrictions remain unchanged. Proxy settings are removed from the loopback veri
 
 The Linux runtime contract matches the original classifiers: glibc and C/C++ runtimes, udev,
 PulseAudio, XCB, ALSA, VA-API and DRM may come from the operating system. Some are already packaged by
-the preset, depending on architecture; ARM64 takes VA-API, DRM and udev from the system. These device
-and display libraries are distinct from the statically linked codec, XML and TLS libraries. A minimal
-Linux container still needs those system packages; dependencies outside the declared set are rejected.
+the preset, depending on architecture. These device and display libraries are distinct from the
+statically linked codec, XML and TLS libraries. A minimal Linux container still needs those system
+packages; dependencies outside the declared set are rejected.
 
 Each classifier must also preserve the original packaged inventory: seven FFmpeg libraries and seven
 JNI bridges, plus VA/VA-DRM/DRM on Linux x64, ALSA/Broadcom/VCOS/VCHIQ on Linux ARM64, `libatomic` on
@@ -128,8 +125,8 @@ the shared runtime manifest, with the SHA-256 of each platform's Java wrappers, 
 platform's wrappers as `libs/ffmpeg-<version>.jar`. Once rebuilt natives are installed, running the
 repacker without a candidate directory fails instead of silently replacing them with the original Maven binaries.
 
-Sources: [JavaCPP Presets fork with the Vulkan bindings](https://github.com/SrRapero720/javacpp-presets/tree/ffmpeg-vulkan)
-on [JavaCPP Presets master](https://github.com/bytedeco/javacpp-presets/tree/master),
+Sources: [JavaCPP Presets fork with the Vulkan bindings](https://github.com/SrRapero720/javacpp-presets/tree/ffmpeg-vulkan-1.5.14)
+on [JavaCPP Presets 1.5.14](https://github.com/bytedeco/javacpp-presets/tree/1.5.14),
 [libxml2 2.15.4 release notes](https://download.gnome.org/sources/libxml2/2.15/libxml2-2.15.4.news),
 [OpenSSL August 2026 advisory](https://mirror.openssl-library.org/news/secadv/20260825.txt).
 

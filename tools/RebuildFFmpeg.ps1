@@ -106,16 +106,8 @@ foreach ($change in $changes) {
 $mfxConfig = '-DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Release .'
 if ([regex]::Matches($recipe, [regex]::Escape($mfxConfig)).Count -ne 2) { throw 'Expected two Windows mfx_dispatch CMake configurations' }
 $recipe = $recipe.Replace($mfxConfig, '-DCMAKE_POLICY_VERSION_MINIMUM=3.5 ' + $mfxConfig)
-# OPENCL STAYS DISABLED: LINKING IT WOULD MAKE libavutil REQUIRE AN OPENCL LOADER THAT NOT EVERY HOST HAS,
-# SO THE RECIPE KEEPS ITS DEFAULT --disable-opencl WITHOUT THE DESKTOP OVERRIDE AND ITS D3D11 SHARING CHECK
-foreach ($pattern in @(
-    '(?ms)^case \$PLATFORM in\r?\n    linux-arm64 \| linux-x86_64 \| macosx-arm64 \| macosx-x86_64 \| windows-x86_64\)\r?\n        OPENCL_PATH=.*?^esac\r?\n',
-    '(?m)^[ \t]*if ! grep -q "\^#define HAVE_OPENCL_D3D11 1" config\.h; then\r?\n(?:.*\r?\n){3}[ \t]*fi\r?\n'
-)) {
-    if ([regex]::Matches($recipe, $pattern).Count -ne 1) { throw "Expected upstream OpenCL recipe block is missing or duplicated: $pattern" }
-    $recipe = [regex]::Replace($recipe, $pattern, '')
-}
-if ($recipe -match 'enable-opencl|OPENCL_PATH|-lOpenCL|HAVE_OPENCL' -or !$recipe.Contains('EXTRA_CONFIG="--disable-opencl"')) { throw 'Native recipe still links OpenCL' }
+# OPENCL STAYS DISABLED: LINKING IT WOULD MAKE libavutil REQUIRE AN OPENCL LOADER THAT NOT EVERY HOST HAS
+if ($recipe -match 'enable-opencl|OPENCL_PATH|-lOpenCL|HAVE_OPENCL' -or !$recipe.Contains('--disable-opencl')) { throw 'Native recipe must keep OpenCL disabled' }
 $gplBlock = @'
 if [[ "$EXTENSION" == *gpl ]]; then
     # Enable GPLv3 modules
@@ -129,7 +121,7 @@ if ($variant -ceq 'lgpl') {
     foreach ($line in @(
     'X264=x264-stable',
     'X265=3.4',
-    'download https://github.com/mirror/x264/archive/refs/heads/stable.tar.gz $X264.tar.gz',
+    'download https://code.videolan.org/videolan/x264/-/archive/stable/$X264.tar.gz $X264.tar.gz',
     'download https://github.com/videolan/x265/archive/$X265.tar.gz x265-$X265.tar.gz',
     'tar --totals -xzf ../$X264.tar.gz',
     'tar --totals -xzf ../x265-$X265.tar.gz',
@@ -160,15 +152,6 @@ Copy-Item -LiteralPath $headersPatch -Destination (Join-Path $source 'ffmpeg/ffm
 $upstreamVersion = '<version>' + $properties.ffmpeg_version.Split('-')[0] + '-${project.parent.version}</version>'
 if (!$pom.Contains($upstreamVersion)) { throw 'Unexpected FFmpeg Maven version expression' }
 $pom = $pom.Replace($upstreamVersion, "<version>$($properties.ffmpeg_version)</version>")
-# WITHOUT OPENCL THE PRESET NEEDS NEITHER THE OPENCL ARTIFACTS NOR THE PLUGIN PATHS THAT POINT AT THEM
-foreach ($pattern in @(
-    '(?s)\s*<dependency>\s*<groupId>org\.bytedeco</groupId>\s*<artifactId>opencl</artifactId>.*?</dependency>',
-    '(?s)(?<=<artifactId>javacpp</artifactId>)\s*<dependencies>\s*<dependency>\s*<groupId>org\.bytedeco</groupId>\s*<artifactId>opencl-platform</artifactId>.*?</configuration>'
-)) {
-    if ([regex]::Matches($pom, $pattern).Count -ne 1) { throw "Expected upstream OpenCL Maven block is missing or duplicated: $pattern" }
-    $pom = [regex]::Replace($pom, $pattern, '')
-}
-if ($pom.Contains('opencl')) { throw 'Generated Maven project still depends on OpenCL' }
 $gplProfile = @'
     <profile>
       <id>ffmpeg-gpl</id>

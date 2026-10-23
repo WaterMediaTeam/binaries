@@ -31,7 +31,7 @@ public final class VerifyFFmpeg {
         swresample.swresample_version();
         // THE hwcontext_vulkan BINDINGS MUST LINK: WATERMEDIA DECODES ON ITS VULKAN DEVICE THROUGH THEM
         final var extensionCount = new IntPointer(1);
-        final var extensions = avutil_vulkan.av_vk_get_optional_device_extensions(extensionCount);
+        final var extensions = avutil.av_vk_get_optional_device_extensions(extensionCount);
         if (extensions == null || extensions.isNull() || extensionCount.get() <= 0) throw new IllegalStateException("FFmpeg lists no optional Vulkan device extensions");
         avutil.av_free(extensions);
         final String[] licenses = {avutil.avutil_license().getString(), avcodec.avcodec_license().getString(),
