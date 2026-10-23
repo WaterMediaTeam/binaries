@@ -68,6 +68,8 @@ public final class RepackFFmpeg {
         metadata.put("libxml2_sha256", "libxml2.sha256");
         metadata.put("openssl_version", "openssl.version");
         metadata.put("openssl_sha256", "openssl.sha256");
+        metadata.put("vulkan_headers_version", "vulkan.headers.version");
+        metadata.put("vulkan_headers_sha256", "vulkan.headers.sha256");
         metadata.put("ffmpeg_tls_patch_sha256", "tls.patch.sha256");
         metadata.put("ffmpeg_security_patch_sha256", "security.patch.sha256");
         metadata.put("ffmpeg_headers_patch_sha256", "headers.patch.sha256");

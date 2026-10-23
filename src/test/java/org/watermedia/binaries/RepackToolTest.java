@@ -64,7 +64,7 @@ class RepackToolTest {
                     final var entries = zip.stream().toList();
                     assertEquals("version.cfg", entries.get(entries.size() - 1).getName());
                     try (final var input = zip.getInputStream(entries.get(entries.size() - 1))) {
-                        assertEquals("8.1.2-1.5.14", new String(input.readAllBytes(), StandardCharsets.UTF_8));
+                        assertEquals(manifest.getProperty("version"), new String(input.readAllBytes(), StandardCharsets.UTF_8));
                     }
                 }
             }
@@ -108,7 +108,8 @@ class RepackToolTest {
         final Properties properties = new Properties();
         try (final var input = Files.newInputStream(configuration)) { properties.load(input); }
         for (final String key: new String[]{"ffmpeg_source_ref", "ffmpeg_source_commit", "ffmpeg_source_sha256",
-                "libxml2_version", "libxml2_sha256", "openssl_version", "openssl_sha256"}) {
+                "libxml2_version", "libxml2_sha256", "openssl_version", "openssl_sha256",
+                "vulkan_headers_version", "vulkan_headers_sha256"}) {
             properties.remove(key);
         }
         try (final var output = Files.newOutputStream(configuration)) { properties.store(output, null); }
@@ -125,6 +126,7 @@ class RepackToolTest {
             assertNull(manifest.getProperty("source.commit"));
             assertNull(manifest.getProperty("libxml2.version"));
             assertNull(manifest.getProperty("openssl.version"));
+            assertNull(manifest.getProperty("vulkan.headers.version"));
             assertFalse(Files.readString(this.directory.resolve("tools/ffmpeg-manifest.properties")).contains("=null"));
             assertEquals("rebuilt:9.0-custom-1.5.14/ffmpeg-9.0-custom-1.5.14-linux-x86_64-gpl.jar",
                     manifest.getProperty("linux.source"));
@@ -310,6 +312,8 @@ class RepackToolTest {
             record.setProperty("libxml2.sha256", properties.getProperty("libxml2_sha256"));
             record.setProperty("openssl.version", properties.getProperty("openssl_version"));
             record.setProperty("openssl.sha256", properties.getProperty("openssl_sha256"));
+            record.setProperty("vulkan.headers.version", properties.getProperty("vulkan_headers_version"));
+            record.setProperty("vulkan.headers.sha256", properties.getProperty("vulkan_headers_sha256"));
             if (!gpl) {
                 record.setProperty("tls.patch.sha256", properties.getProperty("ffmpeg_tls_patch_sha256"));
                 record.setProperty("security.patch.sha256", properties.getProperty("ffmpeg_security_patch_sha256"));

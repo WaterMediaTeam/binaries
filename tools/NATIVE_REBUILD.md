@@ -1,12 +1,17 @@
 # Native rebuilds
 
-The original Maven `8.1.2-1.5.14` classifiers contain statically linked libxml2 2.9.12 and OpenSSL 3.5.7.
-`RebuildFFmpeg.ps1` retains the FFmpeg/JavaCPP coordinate and prepares the suffix-free LGPL recipe with
+The upstream recipe links libxml2 2.9.12 and OpenSSL 3.5.7 statically. `RebuildFFmpeg.ps1` retains the
+preset's FFmpeg/JavaCPP coordinate (`8.1.2-1.5.15-SNAPSHOT`) and prepares the suffix-free LGPL recipe with
 libxml2 2.15.4 and OpenSSL 3.5.8. The preset sources come from the `ffmpeg_source_repository` fork
-(`SrRapero720/javacpp-presets`, branch `ffmpeg-vulkan-1.5.14`), which adds the `avutil_vulkan` bindings of
-`libavutil/hwcontext_vulkan.h` (`AVVulkanDeviceContext`, `AVVulkanFramesContext`, `AVVkFrame`) on top of tag
-`1.5.14` so WaterMedia can decode on its own Vulkan device; the commit, source archive hash and native
-dependency versions are pinned in `gradle.properties`. The Maven build also produces the Java wrappers
+(`SrRapero720/javacpp-presets`, branch `ffmpeg-vulkan`), which adds the `avutil_vulkan` bindings of
+`libavutil/hwcontext_vulkan.h` (`AVVulkanDeviceContext`, `AVVulkanFramesContext`, `AVVkFrame`) on top of the
+upstream master (`1.5.15-SNAPSHOT`) so WaterMedia can decode on its own Vulkan device; the commit, source archive
+hash and native dependency versions are pinned in `gradle.properties`. Maven resolves JavaCPP `1.5.15-SNAPSHOT`
+from the Central Portal snapshot repository and `javacpp_sha256` pins that snapshot jar, so a newer snapshot,
+or the portal's 90-day snapshot cleanup, requires a new hash.
+The script keeps OpenCL disabled: it drops the desktop override that master adds to the recipe (with its D3D11
+sharing check) and the OpenCL artifacts of the Maven project, so libavutil never requires an OpenCL loader.
+The Maven build also produces the Java wrappers
 (`ffmpeg/target/ffmpeg.jar`) that match those JNI libraries: each candidate carries its copy as
 `ffmpeg-<version>.jar`, the repacker installs the first verified one as `libs/ffmpeg-<version>.jar`, and the
 core merges that file into its jar instead of the Maven Central artifact.
@@ -55,9 +60,12 @@ VDPAU remains disabled as in the original Linux classifiers, keeping their exist
 
 Maven runs the complete JavaCPP preset in three phases: compile and install the selected FFmpeg profile
 with its static codec dependencies, parse its headers, then compile all seven JNI libraries with `copyLibs` and
-`copyResources`. A standalone FFmpeg CLI build cannot replace these classifier JARs. The recipe stages its
-own pinned Vulkan headers, so the JNI build never depends on the host's; the linux-arm64 job additionally
-builds the Raspberry Pi userland the preset links there.
+`copyResources`. A standalone FFmpeg CLI build cannot replace these classifier JARs. The script downloads the
+pinned Vulkan-Headers release (`vulkan_headers_version`, the Vulkan SDK release of the upstream preset builds) and puts
+its `include` directory first on `CPATH`, so FFmpeg's configure and the JNI build of `jniavutil`
+(`hwcontext_vulkan.h`) use the same headers on every host without Vulkan packages; FFmpeg loads the Vulkan
+loader at runtime, so nothing links against it. The linux-arm64 job additionally builds the Raspberry Pi
+userland the preset links there.
 On macOS, the GCC library directory is passed directly to Maven so JavaCPP packages `libatomic`.
 The macOS Maven profile reserves Mach-O header space with `-headerpad_max_install_names` before
 portable install names and signatures are written. Linux x64 passes the verified compiler multiarch
@@ -119,8 +127,8 @@ the shared runtime manifest, with the SHA-256 of each platform's Java wrappers, 
 platform's wrappers as `libs/ffmpeg-<version>.jar`. Once rebuilt natives are installed, running the
 repacker without a candidate directory fails instead of silently replacing them with the original Maven binaries.
 
-Sources: [JavaCPP Presets fork with the Vulkan bindings](https://github.com/SrRapero720/javacpp-presets/tree/ffmpeg-vulkan-1.5.14)
-on [JavaCPP Presets 1.5.14](https://github.com/bytedeco/javacpp-presets/tree/1.5.14),
+Sources: [JavaCPP Presets fork with the Vulkan bindings](https://github.com/SrRapero720/javacpp-presets/tree/ffmpeg-vulkan)
+on [JavaCPP Presets master](https://github.com/bytedeco/javacpp-presets/tree/master),
 [libxml2 2.15.4 release notes](https://download.gnome.org/sources/libxml2/2.15/libxml2-2.15.4.news),
 [OpenSSL August 2026 advisory](https://mirror.openssl-library.org/news/secadv/20260825.txt).
 
