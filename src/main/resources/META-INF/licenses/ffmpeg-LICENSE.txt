@@ -1,6 +1,6 @@
 FFmpeg (https://ffmpeg.org) provides the native multimedia libraries shipped by this module
 (avcodec, avformat, avutil, avfilter, avdevice, swscale and swresample). WaterMedia builds the
-suffix-free org.bytedeco:ffmpeg:8.1.2-1.5.14 classifiers from the pinned JavaCPP preset source.
+suffix-free org.bytedeco:ffmpeg:9.0.2-1.5.14 classifiers from the pinned JavaCPP preset source.
 The configuration uses --enable-version3 and excludes --enable-gpl, --enable-nonfree, x264 and
 x265. The resulting FFmpeg libraries report GNU Lesser General Public License version 3 or later.
 

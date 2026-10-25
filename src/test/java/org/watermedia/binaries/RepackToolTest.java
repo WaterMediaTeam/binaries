@@ -254,14 +254,12 @@ class RepackToolTest {
         Files.copy(Path.of("gradle.properties"), this.directory.resolve("gradle.properties"));
         final Properties properties = new Properties();
         try (final var input = Files.newInputStream(this.directory.resolve("gradle.properties"))) { properties.load(input); }
-        properties.putIfAbsent("ffmpeg_security_patch_sha256", "1".repeat(64));
         properties.putIfAbsent("ffmpeg_headers_patch_sha256", "2".repeat(64));
         if (gpl) {
             properties.setProperty("ffmpeg_version", "9.0-custom-1.5.14");
             properties.setProperty("ffmpeg_variant", "gpl");
             properties.setProperty("ffmpeg_license", "GPL-3.0-or-later");
             properties.remove("ffmpeg_tls_patch_sha256");
-            properties.remove("ffmpeg_security_patch_sha256");
             properties.remove("ffmpeg_headers_patch_sha256");
         }
         try (final var output = Files.newOutputStream(this.directory.resolve("gradle.properties"))) { properties.store(output, null); }
@@ -316,7 +314,6 @@ class RepackToolTest {
             record.setProperty("vulkan.headers.sha256", properties.getProperty("vulkan_headers_sha256"));
             if (!gpl) {
                 record.setProperty("tls.patch.sha256", properties.getProperty("ffmpeg_tls_patch_sha256"));
-                record.setProperty("security.patch.sha256", properties.getProperty("ffmpeg_security_patch_sha256"));
                 record.setProperty("headers.patch.sha256", properties.getProperty("ffmpeg_headers_patch_sha256"));
             }
             record.setProperty("recipe.sha256", "0".repeat(64));

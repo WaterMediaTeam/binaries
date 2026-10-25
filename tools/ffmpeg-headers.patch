@@ -1,5 +1,5 @@
 diff --git a/libavformat/aviobuf.c b/libavformat/aviobuf.c
-index 414100a..0dcc30e 100644
+index 9cfae12..d004910 100644
 --- a/libavformat/aviobuf.c
 +++ b/libavformat/aviobuf.c
 @@ -994,7 +994,7 @@ void ffio_write_lines(AVIOContext *s, const unsigned char *buf, int size,
@@ -12,10 +12,10 @@ index 414100a..0dcc30e 100644
      const char **opt = opts;
      uint8_t *buf = NULL;
 diff --git a/libavformat/http.c b/libavformat/http.c
-index 28ab740..1ee1978 100644
+index 777225f..b4e3384 100644
 --- a/libavformat/http.c
 +++ b/libavformat/http.c
-@@ -88,6 +88,7 @@ typedef struct HTTPContext {
+@@ -87,6 +87,7 @@ typedef struct HTTPContext {
      char *ca_file;
      int tls_verify;
      char *headers;
@@ -23,15 +23,15 @@ index 28ab740..1ee1978 100644
      char *mime_type;
      char *http_version;
      char *user_agent;
-@@ -177,6 +178,7 @@ static const AVOption options[] = {
-     { "tls_verify", "Verify the peer certificate", OFFSET(tls_verify), AV_OPT_TYPE_BOOL, { .i64 = TLS_VERIFY_DEFAULT }, 0, 1, D | E },
-     { "verify", "Verify the peer certificate", OFFSET(tls_verify), AV_OPT_TYPE_BOOL, { .i64 = TLS_VERIFY_DEFAULT }, 0, 1, D | E },
+@@ -176,6 +177,7 @@ static const AVOption http_options[] = {
+     { "tls_verify", "Verify the peer certificate", OFFSET(tls_verify), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, D | E },
+     { "verify", "Verify the peer certificate", OFFSET(tls_verify), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, D | E },
      { "headers", "set custom HTTP headers, can override built in default headers", OFFSET(headers), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, D | E },
 +    { "header_origin", "Origin allowed to receive credential headers", OFFSET(header_origin), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, D | E },
      { "content_type", "set a specific content type for the POST messages", OFFSET(content_type), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, D | E },
      { "user_agent", "override User-Agent header", OFFSET(user_agent), AV_OPT_TYPE_STRING, { .str = DEFAULT_USER_AGENT }, 0, 0, D },
      { "referer", "override referer header", OFFSET(referer), AV_OPT_TYPE_STRING, { .str = NULL }, 0, 0, D },
-@@ -221,6 +223,7 @@ static int http_connect(URLContext *h, const char *path, const char *local_path,
+@@ -220,6 +222,7 @@ static int http_connect(URLContext *h, const char *path, const char *local_path,
                          const char *proxyauth);
  static int http_read_header(URLContext *h);
  static int http_shutdown(URLContext *h, int flags);
@@ -63,7 +63,7 @@ index 28ab740..1ee1978 100644
      if (options)
          av_dict_copy(&s->chained_options, *options, 0);
  
-@@ -1240,7 +1251,6 @@ static int process_line(URLContext *h, char *line, int line_count, int *parsed_h
+@@ -1242,7 +1253,6 @@ static int process_line(URLContext *h, char *line, int line_count, int *parsed_h
              if (!av_isspace(*p))
                  return ff_http_averror(400, AVERROR(EIO));
              *(p++) = '\0';
@@ -71,7 +71,7 @@ index 28ab740..1ee1978 100644
              if (!(s->resource = av_strdup(resource)))
                  return AVERROR(ENOMEM);
  
-@@ -1324,8 +1334,9 @@ static int process_line(URLContext *h, char *line, int line_count, int *parsed_h
+@@ -1326,8 +1336,9 @@ static int process_line(URLContext *h, char *line, int line_count, int *parsed_h
              av_free(s->mime_type);
              s->mime_type = av_get_token((const char **)&p, ";");
          } else if (!av_strcasecmp(tag, "Set-Cookie")) {
@@ -83,7 +83,7 @@ index 28ab740..1ee1978 100644
          } else if (!av_strcasecmp(tag, "Icy-MetaInt")) {
              s->icy_metaint = strtoull(p, NULL, 10);
          } else if (!av_strncasecmp(tag, "Icy-", 4)) {
-@@ -1390,7 +1401,7 @@ static int get_cookies(HTTPContext *s, char **cookies, const char *path,
+@@ -1392,7 +1403,7 @@ static int get_cookies(HTTPContext *s, char **cookies, const char *path,
          next = NULL;
          // store the cookie in a dict in case it is updated in the response
          if (parse_cookie(s, cookie, &s->cookie_dict))
@@ -92,7 +92,7 @@ index 28ab740..1ee1978 100644
  
          // continue on to the next cookie if this one cannot be parsed
          if (parse_set_cookie(cookie, &cookie_params))
-@@ -1475,8 +1486,6 @@ static int http_read_header(URLContext *h)
+@@ -1477,8 +1488,6 @@ static int http_read_header(URLContext *h)
              return err;
          }
  
@@ -101,7 +101,7 @@ index 28ab740..1ee1978 100644
          err = process_line(h, line, s->line_count, &parsed_http_code);
          if (err < 0) {
              if (parsed_http_code) {
-@@ -1507,7 +1516,8 @@ static int http_read_header(URLContext *h)
+@@ -1509,7 +1518,8 @@ static int http_read_header(URLContext *h)
          s->initial_requests = 0; /* unable to use partial requests */
  
      // add any new cookies into the existing cookie string
@@ -111,7 +111,7 @@ index 28ab740..1ee1978 100644
      av_dict_free(&s->cookie_dict);
  
      return err;
-@@ -1544,6 +1554,48 @@ static void bprint_escaped_path(AVBPrint *bp, const char *path)
+@@ -1546,6 +1556,48 @@ static void bprint_escaped_path(AVBPrint *bp, const char *path)
      }
  }
  
@@ -160,17 +160,17 @@ index 28ab740..1ee1978 100644
  static int http_connect(URLContext *h, const char *path, const char *local_path,
                          const char *hoststr, const char *auth,
                          const char *proxyauth)
-@@ -1555,6 +1607,7 @@ static int http_connect(URLContext *h, const char *path, const char *local_path,
-     uint64_t off = s->off;
+@@ -1558,6 +1610,7 @@ static int http_connect(URLContext *h, const char *path, const char *local_path,
      const char *method;
      int send_expect_100 = 0;
+     int keep_alive = 1;
 +    int same_origin = http_same_origin(s->header_origin, s->location);
  
      av_bprint_init_for_buffer(&request, s->buffer, sizeof(s->buffer));
  
-@@ -1634,14 +1687,14 @@ static int http_connect(URLContext *h, const char *path, const char *local_path,
-     if (!has_header(s->headers, "\r\nConnection: "))
-         av_bprintf(&request, "Connection: %s\r\n", s->multiple_requests ? "keep-alive" : "close");
+@@ -1639,14 +1692,14 @@ static int http_connect(URLContext *h, const char *path, const char *local_path,
+         av_bprintf(&request, "Connection: %s\r\n", keep_alive ? "keep-alive" : "close");
+     }
  
 -    if (!has_header(s->headers, "\r\nHost: "))
 +    if (!same_origin || !has_header(s->headers, "\r\nHost: "))
@@ -185,7 +185,7 @@ index 28ab740..1ee1978 100644
          char *cookies = NULL;
          if (!get_cookies(s, &cookies, path, hoststr) && cookies) {
              av_bprintf(&request, "Cookie: %s\r\n", cookies);
-@@ -1652,8 +1705,49 @@ static int http_connect(URLContext *h, const char *path, const char *local_path,
+@@ -1657,8 +1710,49 @@ static int http_connect(URLContext *h, const char *path, const char *local_path,
          av_bprintf(&request, "Icy-MetaData: 1\r\n");
  
      /* now add in custom headers */
@@ -236,7 +236,7 @@ index 28ab740..1ee1978 100644
  
      if (authstr)
          av_bprintf(&request, "%s", authstr);
-@@ -1661,8 +1755,6 @@ static int http_connect(URLContext *h, const char *path, const char *local_path,
+@@ -1666,8 +1760,6 @@ static int http_connect(URLContext *h, const char *path, const char *local_path,
          av_bprintf(&request, "Proxy-%s", proxyauthstr);
      av_bprintf(&request, "\r\n");
  

@@ -1,11 +1,11 @@
 # Native rebuilds
 
 The upstream recipe links libxml2 2.9.12 and OpenSSL 3.5.7 statically. `RebuildFFmpeg.ps1` retains the
-preset's FFmpeg/JavaCPP coordinate (`8.1.2-1.5.14`) and prepares the suffix-free LGPL recipe with
+preset's FFmpeg/JavaCPP coordinate (`9.0.2-1.5.14`) and prepares the suffix-free LGPL recipe with
 libxml2 2.15.4 and OpenSSL 3.5.8. The preset sources come from the `ffmpeg_source_repository` fork
-(`SrRapero720/javacpp-presets`, branch `ffmpeg-vulkan-1.5.14`), which maps `libavutil/hwcontext_vulkan.h` into the
-`avutil` preset (`AVVulkanDeviceContext`, `AVVulkanFramesContext`, `AVVkFrame` and the `av_vk_*` functions of
-`org.bytedeco.ffmpeg.global.avutil`) on top of tag `1.5.14` so WaterMedia can decode on its own Vulkan device; the
+(`SrRapero720/javacpp-presets`, branch `ffmpeg-vulkan-1.5.14`), which upgrades tag `1.5.14` to FFmpeg 9.0.2 and maps
+`libavutil/hwcontext_vulkan.h` into the `avutil` preset (`AVVulkanDeviceContext`, `AVVulkanFramesContext`, `AVVkFrame`
+and the `av_vk_*` functions of `org.bytedeco.ffmpeg.global.avutil`) so WaterMedia can decode on its own Vulkan device; the
 commit, source archive hash and native dependency versions are pinned in `gradle.properties`. Maven resolves the
 JavaCPP `1.5.14` release from Maven Central and `javacpp_sha256` pins that jar. The recipe keeps OpenCL disabled,
 so libavutil never requires an OpenCL loader.
@@ -20,11 +20,10 @@ To select GPL, set `ffmpeg_variant=gpl` and the corresponding `ffmpeg_license` i
 That profile retains x264/x265 and the upstream GPL Maven profile, and produces the `-gpl` classifier.
 Both profiles keep the native integrity and behavior checks. Other build versions require matching
 JavaCPP sources, bindings and checksums; runtime loading does not impose a fixed version or license.
-The checksum-pinned TLS patch enables certificate verification by default, verifies IP identities,
-and preserves trust options through HTTP, HLS and DASH, including manifests read from local files.
-The separate `ffmpeg-security.patch` backports the reviewed upstream fixes listed below while retaining
-FFmpeg 8.1.2 and the original JavaCPP API. Its SHA-256 is mandatory when this patch is declared by the recipe.
-The third `ffmpeg-headers.patch` binds sensitive HTTP headers to their original request origin across
+FFmpeg 9.0.2 verifies certificates by default and pins numeric hosts to the certificate's IP identity.
+The checksum-pinned TLS patch carries the trust options (`tls_verify`, `ca_file`) through HTTP, HLS and DASH,
+including manifests read from local files.
+The second `ffmpeg-headers.patch` binds sensitive HTTP headers to their original request origin across
 redirects and nested streams. Its separate checksum is required for candidates using this recipe.
 Custom candidates may supply equivalent capabilities through different sources; the packer checks
 the declared provenance and artifact hashes, while native behavior must be verified on its target platform.
@@ -85,7 +84,7 @@ both probes pass, and their records include the exact TLS and HTTP headers patch
 The same suite verifies header and cookie isolation across redirects, ports and nested HLS/DASH reads,
 including same-origin positive cases and a return to the original origin after a foreign request.
 The build verifies the round-trip patch set in an isolated copy of only the touched source files.
-It reverses headers, security and TLS in that order, reapplies TLS, security and headers, then compares
+It reverses headers and TLS in that order, reapplies TLS and headers, then compares
 every file's SHA-256 with the compiled source. This validates overlapping patches without changing
 the build tree. Source checks complement the runtime probes; they do not claim that every vulnerability
 has a dedicated exploit regression test.
@@ -130,14 +129,16 @@ on [JavaCPP Presets 1.5.14](https://github.com/bytedeco/javacpp-presets/tree/1.5
 [libxml2 2.15.4 release notes](https://download.gnome.org/sources/libxml2/2.15/libxml2-2.15.4.news),
 [OpenSSL August 2026 advisory](https://mirror.openssl-library.org/news/secadv/20260825.txt).
 
-## Reviewed FFmpeg security backports
+## Reviewed FFmpeg security fixes
 
-The following 29 fixes were absent from the selected source snapshot. The consolidated patch contains
-30 upstream commits; CVE-2026-66036 includes its required prerequisite. Library and runtime evidence
-must identify this patch before these fixes can be claimed for a distributed binary.
+The FFmpeg 9.0.2 release contains every reviewed fix below, so the recipe applies no security backport.
+CVE-2026-66036 includes its required prerequisite.
 
 | CVE | Upstream fixes |
 | --- | --- |
+| CVE-2026-6385 | [1bde76da8901](https://github.com/FFmpeg/FFmpeg/commit/1bde76da890127608744c3b17669a99d2adce54a) |
+| CVE-2026-13858 | [256d93413f26](https://github.com/FFmpeg/FFmpeg/commit/256d93413f260e1524c2ab994dc72c4edaa0d04c) |
+| CVE-2026-38348 | [fc6dcb4aaf2a](https://github.com/FFmpeg/FFmpeg/commit/fc6dcb4aaf2aa2b832b0bc92297cc91b07f2ea4d) |
 | CVE-2026-58049 | [11ff18a6c801](https://github.com/FFmpeg/FFmpeg/commit/11ff18a6c80187405fc492f9bb07ba9f2f663f76) |
 | CVE-2026-64830 | [dbd495f066a8](https://github.com/FFmpeg/FFmpeg/commit/dbd495f066a85ba96b17433f4306582aa37c3951) |
 | CVE-2026-64831 | [92737390dc13](https://github.com/FFmpeg/FFmpeg/commit/92737390dc133daadce47dd7d2ec8ef3d9ebcbed) |
@@ -167,11 +168,3 @@ must identify this patch before these fixes can be claimed for a distributed bin
 | CVE-2026-75145 | [b4c199c5906f](https://github.com/FFmpeg/FFmpeg/commit/b4c199c5906ff53368926c2a5839881f41957e7f) |
 | CVE-2026-75146 | [65b0dab903e5](https://github.com/FFmpeg/FFmpeg/commit/65b0dab903e5975e036b30ecc58f5935d4f151e0) |
 | CVE-2026-75147 | [983dae9c19f4](https://github.com/FFmpeg/FFmpeg/commit/983dae9c19f46c87d597598c0fd2f2fcee0ad2f8) |
-
-These three reviewed fixes already exist in the selected source and are not applied again:
-
-| CVE | Existing upstream fix |
-| --- | --- |
-| CVE-2026-6385 | [1bde76da8901](https://github.com/FFmpeg/FFmpeg/commit/1bde76da890127608744c3b17669a99d2adce54a) |
-| CVE-2026-13858 | [256d93413f26](https://github.com/FFmpeg/FFmpeg/commit/256d93413f260e1524c2ab994dc72c4edaa0d04c) |
-| CVE-2026-38348 | [fc6dcb4aaf2a](https://github.com/FFmpeg/FFmpeg/commit/fc6dcb4aaf2aa2b832b0bc92297cc91b07f2ea4d) |

@@ -24,7 +24,7 @@ This module requires WaterMedia; it has no independent startup lifecycle.
 | Android  | x86_64       |   ⛔    |
 
 ## 🧰 What is inside
-- **FFMPEG 8.1.2 natives** (LGPLv3+ build, JavaCPP 1.5.14) — video and audio decoding without the GPL x264/x265 encoders
+- **FFMPEG 9.0.2 natives** (LGPLv3+ build, JavaCPP 1.5.14) — video and audio decoding without the GPL x264/x265 encoders
 - **JavaCPP JNI glue** — the bridge between the Java API and the natives
 - **yt-dlp and BotGuard provisioning** — verified executable downloads on first use
 
