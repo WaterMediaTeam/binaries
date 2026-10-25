@@ -27,12 +27,11 @@ sourceSets {
     test.runtimeClasspath += hostClasspath
 }
 
-def providerProperties = new Properties()
-file('../gradle.properties').withInputStream(providerProperties.&load)
+def javacppVersion = ffmpeg_version.split('-', 2)[1]
 dependencies {
-    // THE API JAR OF THE REBUILT PRESET (SEE tools/NATIVE_REBUILD.md); THE CORE MERGES THE SAME FILE INTO ITS JAR
-    toolsCompileOnly files('libs/ffmpeg-' + providerProperties.ffmpeg_version + '.jar')
-    toolsCompileOnly "org.bytedeco:javacpp:${providerProperties.ffmpeg_version.split('-', 2)[1]}"
+    // THE API JAR OF THE REBUILT PRESET, NAMED AFTER THIS MODULE'S ffmpeg_version (SEE tools/NATIVE_REBUILD.md); THE CORE MERGES THE SAME FILE INTO ITS JAR
+    toolsCompileOnly files('libs/ffmpeg-' + ffmpeg_version + '.jar')
+    toolsCompileOnly "org.bytedeco:javacpp:$javacppVersion"
     library 'org.watermedia:watermedia'
     implementation "org.tukaani:xz:$xz_version"
 }
