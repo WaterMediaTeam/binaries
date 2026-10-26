@@ -28,7 +28,7 @@ $repository = $properties.ffmpeg_source_repository
 if ($repository -cnotmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' -or $revision -notmatch '^[a-f0-9]{40}$' -or $sourceCommit -notmatch '^[a-f0-9]{40}$' -or $xmlVersion -notmatch '^\d+\.\d+\.\d+$' -or $sslVersion -notmatch '^\d+\.\d+\.\d+$' -or $vulkanVersion -notmatch '^\d+\.\d+\.\d+$' -or $variant -cnotin @('lgpl', 'gpl') -or [string]::IsNullOrWhiteSpace($properties.ffmpeg_license)) {
     throw 'Native source repository and revisions, build variant and license metadata must be declared in gradle.properties'
 }
-$work = Join-Path $root 'build/native-rebuild'
+$work = Join-Path $root 'build/nr'
 [IO.Directory]::CreateDirectory($work) | Out-Null
 $sourceArchive = Join-Path $work "javacpp-presets-$revision.zip"
 $sourceUrl = "https://github.com/$repository/archive/$revision.zip"
@@ -61,8 +61,9 @@ foreach ($download in @(
         throw "Source archive SHA-256 mismatch: $($download.Url)"
     }
 }
-# SHORT SOURCE PATHS KEEP LEGACY C/C++ TOOLS BELOW WINDOWS MAX_PATH, INCLUDING RELATIVE INCLUDES.
-$source = Join-Path $work ('src/' + $revision.Substring(0, 12))
+# SHORT SOURCE PATHS KEEP LEGACY C/C++ TOOLS BELOW WINDOWS MAX_PATH: MINGW'S ar READS SHADERC OBJECTS 206 CHARACTERS BELOW THE SOURCE,
+# SO THE CI PREFIX D:\a\binaries\binaries\build\nr\1234567\ (40) LANDS AT 246 OF 260 (JAVACPP'S OWN CI AT 243)
+$source = Join-Path $work $revision.Substring(0, 7)
 $sourceMarker = Join-Path $source '.source-sha256'
 if (!(Test-Path -LiteralPath $source)) {
     $unpack = Join-Path $work ([Guid]::NewGuid().ToString('N'))

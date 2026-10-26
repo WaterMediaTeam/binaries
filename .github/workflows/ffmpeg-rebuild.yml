@@ -88,14 +88,14 @@ jobs:
         with:
           name: unverified-ffmpeg-${{ matrix.platform }}
           path: |
-            build/native-rebuild/src/*/ffmpeg/target/ffmpeg*${{ matrix.platform }}*.jar
-            build/native-rebuild/src/*/ffmpeg/cppbuild/${{ matrix.platform }}*/bin/ffmpeg*
-            build/native-rebuild/src/*/ffmpeg/cppbuild/${{ matrix.platform }}*/ffmpeg-*/ffbuild/config.log
-            build/native-rebuild/src/*/ffmpeg/cppbuild/${{ matrix.platform }}*/libxml2-*/config.log
-            build/native-rebuild/src/*/ffmpeg/cppbuild.sh
-            build/native-rebuild/src/*/pom.xml
-            build/native-rebuild/smoke-*/*.mpd
-            build/native-rebuild/smoke-*/*.m4s
+            build/nr/*/ffmpeg/target/ffmpeg*${{ matrix.platform }}*.jar
+            build/nr/*/ffmpeg/cppbuild/${{ matrix.platform }}*/bin/ffmpeg*
+            build/nr/*/ffmpeg/cppbuild/${{ matrix.platform }}*/ffmpeg-*/ffbuild/config.log
+            build/nr/*/ffmpeg/cppbuild/${{ matrix.platform }}*/libxml2-*/config.log
+            build/nr/*/ffmpeg/cppbuild.sh
+            build/nr/*/pom.xml
+            build/nr/smoke-*/*.mpd
+            build/nr/smoke-*/*.m4s
           if-no-files-found: ignore
           compression-level: 0
 

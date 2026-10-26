@@ -1,33 +1,13 @@
-# RELEASE 3.0.0.6 (RC)
-- 🐛 Fixed jar crashes the game asking for multirelease folder
-
-# RELEASEE 3.0.0-rc.5
-- 🛠️ Updated to WATERMeDIA 3.0.0.22 (minimal version)
-- 🛠️ Now requires WATERMeDIA to be loaded as a mod.
-
-# RELEASEE 3.0.0-rc.4
-- 🛠️ Downloads now run through WaterMedia's `NetRequest` (binaries and watermedia are codependent; `NetTool` removed)
-
-# 📦 RELEASE 3.0.0-rc.4
-- ✨ Added YTDPL and BotGuard download manager (downloads latest available binary from github)
-- 🛠️ Updated shipped binaries from LGPL compiled binaries to GPL ones (adds x264 and x265)
-- 🐛 Fixed jar metadata license
-- 🐛 Fixed FORGE/NEOFORGE uses old modId (wm_binaries), moved to new one "watermedia_binaries"
-
-# 📦 RELEASE 3.0.0-rc.3
-- 🐛 Fixed CI building (missing builds on CF and MT)
-
-# 📦 RELEASE 3.0.0-rc.2
-- ✨ Updated FFMPEG binaries to 8.0.1
-
-# 📦 RELEASE 3.0.0-rc.1
-- ✨ Marked as release-candidate (not much to update)
-
-# 📦 RELEASE 3.0.0-beta.2 (1)
-- ✨ Enhanced unzipping performance
-- ✨ Added FFMPEG for Windows ARM
-- 🐛 Fixed FabricMC support
-- 🛠️ Code cleanup and consistency changes
-
-# 📦 RELEASE 3.0.0-alpha.3
-- 🛠️ Removed LibVLC binaries
+# 📦 RELEASE 3.0.0
+- ⚙️ Native libraries initialize and stop exclusively with WATERMeDIA
+- ⚙️ WATERMeDIA requires Binaries on Minecraft clients; it remains optional on dedicated servers
+- ⚙️ Requires WATERMeDIA from 3.0.0 up to, but excluding, 3.1.0; 3.0.0 beta builds are rejected
+- ✨ New companion mod that carries the native libraries WATERMeDIA needs, split from the WATERMeDIA jar
+- ✨ Replaced the VLC binaries with FFmpeg 9.0.2 (LGPL build) and JavaCPP 1.5.14
+  - Plug and play on Windows (x64), macOS (Intel and Apple Silicon) and Linux (x64 and ARM64)
+- ✨ The FFmpeg libraries let WATERMeDIA decode videos on the graphics card and draw them without passing through RAM
+- ✨ Downloads yt-dlp and BotGuard on demand for YouTube support
+  - Downloads are verified against their published checksums, and BotGuard uses the reviewed 0.1.2 release
+- 🛠️ Requires Java 17 up to 25
+- 🛠️ Forge, NeoForge and Fabric report a version mismatch on unsupported Minecraft, Forge, NeoForge or Fabric Loader versions
+- 🛠️ Licensed under the Defensive Public Source (Non-Commercial) License v1.0.1, shown in mod lists
