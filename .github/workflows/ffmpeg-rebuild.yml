@@ -38,7 +38,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential autoconf autoconf-archive automake libtool pkg-config nasm ninja-build meson ragel unzip zip xz-utils libva-dev libdrm-dev libasound2-dev libpulse-dev libxcb1-dev libx11-dev
+          sudo apt-get install -y build-essential autoconf autoconf-archive automake libtool pkg-config nasm ninja-build ragel unzip zip xz-utils libva-dev libdrm-dev libasound2-dev libpulse-dev libxcb1-dev libx11-dev
 
       - name: Install macOS build prerequisites
         if: runner.os == 'macOS'
@@ -61,7 +61,7 @@ jobs:
           Add-Content $env:GITHUB_ENV 'MSYSTEM=MINGW64'
           Add-Content $env:GITHUB_ENV 'MSYS2_PATH_TYPE=inherit'
 
-      - name: Install verified Maven and CMake
+      - name: Install verified Maven, CMake and Meson
         shell: pwsh
         run: ./tools/SetupNativeTools.ps1 -Platform '${{ matrix.platform }}'
 

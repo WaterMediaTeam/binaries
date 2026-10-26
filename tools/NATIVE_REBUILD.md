@@ -5,8 +5,11 @@ preset's FFmpeg/JavaCPP coordinate (`9.0.2-1.5.14`) and prepares the suffix-free
 libxml2 2.15.4 and OpenSSL 3.5.8. The preset sources come from the `ffmpeg_source_repository` fork
 (`SrRapero720/javacpp-presets`, branch `ffmpeg-vulkan-1.5.14`), which upgrades tag `1.5.14` to FFmpeg 9.0.2 and maps
 `libavutil/hwcontext_vulkan.h` into the `avutil` preset (`AVVulkanDeviceContext`, `AVVulkanFramesContext`, `AVVkFrame`
-and the `av_vk_*` functions of `org.bytedeco.ffmpeg.global.avutil`) so WaterMedia can decode on its own Vulkan device; the
-commit, source archive hash and native dependency versions are pinned in `gradle.properties`. Maven resolves the
+and the `av_vk_*` functions of `org.bytedeco.ffmpeg.global.avutil`) so WaterMedia can decode on its own Vulkan device.
+The fork's recipe also builds shaderc and libplacebo statically, so FFmpeg compiles its Vulkan shaders with that
+`glslc` and links the `libplacebo` filter, and adds the AMF headers (Windows and Linux x64) and the D3D12 video processor
+header (Windows) for the AMF and D3D12 filters. The commit, source archive hash and native dependency versions are
+pinned in `gradle.properties`. Maven resolves the
 JavaCPP `1.5.14` release from Maven Central and `javacpp_sha256` pins that jar. The recipe keeps OpenCL disabled,
 so libavutil never requires an OpenCL loader.
 The Maven build also produces the Java wrappers
@@ -42,7 +45,8 @@ Use each platform's own OS and CPU. Windows requires an initialized MSYS2 MINGW6
 its `mingw64/bin` and `usr/bin` directories on PATH, plus `MSYSTEM=MINGW64` and
 `MSYS2_PATH_TYPE=inherit`. Linux and macOS prerequisites are listed in the `FFmpeg Rebuild` workflow.
 The exact Microsoft JDK is downloaded using a pinned SHA-256 and its installed version is checked.
-Maven and CMake are downloaded as verified archives into this project's `build/native-tools`.
+Maven and CMake are downloaded as verified archives into this project's `build/native-tools`; Linux also gets the
+pinned Meson there, because libplacebo needs Meson 1.3 or newer and Ubuntu 22.04 ships 0.61.
 The build uses Meson and its runtime as upstream build dependencies; no system-wide tool installation
 is performed by these scripts.
 Operating-system compilers and some support libraries still come from the runner's package manager.
@@ -70,7 +74,9 @@ library directories to JavaCPP so VA, VA-DRM and DRM are included in the archive
 
 Before a candidate is exported, the script generates a local H.264 DASH fixture and launches a fresh
 Java process using the Java wrappers of the same Maven build. It must load all seven JNI
-components, link the Vulkan bindings of libavutil, confirm the selected recipe's actual licenses, flags and encoders, identify
+components, link the Vulkan bindings of libavutil, find the `scale_vulkan` and `libplacebo` filters (plus `scale_d3d12`
+and `vpp_amf` on Windows and `vpp_amf` on Linux x64, which configure drops silently when their tools or headers are
+missing), confirm the selected recipe's actual licenses, flags and encoders, identify
 the expected embedded libxml2 and OpenSSL versions, encode the fixture with OpenH264 for LGPL or x264 for GPL, parse the DASH
 fixture and reject a recursive-entity manifest. This process receives only the packaged native
 directory, JDK and operating-system paths; compiler directories and inherited Java options are removed.

@@ -9,7 +9,9 @@ import org.bytedeco.javacpp.PointerPointer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Locale;
 import java.util.zip.ZipFile;
 
@@ -34,6 +36,15 @@ public final class VerifyFFmpeg {
         final var extensions = avutil.av_vk_get_optional_device_extensions(extensionCount);
         if (extensions == null || extensions.isNull() || extensionCount.get() <= 0) throw new IllegalStateException("FFmpeg lists no optional Vulkan device extensions");
         avutil.av_free(extensions);
+        // CONFIGURE DROPS THESE FILTERS SILENTLY WHEN THE RECIPE'S glslc, libplacebo, D3D12 VIDEO PROCESSOR OR AMF HEADERS ARE MISSING
+        final String os = System.getProperty("os.name").toLowerCase(Locale.ROOT);
+        final var filters = new ArrayList<>(List.of("scale_vulkan", "libplacebo"));
+        if (os.startsWith("windows")) filters.addAll(List.of("scale_d3d12", "vpp_amf"));
+        else if (os.startsWith("linux") && System.getProperty("os.arch").equals("amd64")) filters.add("vpp_amf");
+        for (final String name: filters) {
+            final var filter = avfilter.avfilter_get_by_name(name);
+            if (filter == null || filter.isNull()) throw new IllegalStateException("FFmpeg lacks the " + name + " filter");
+        }
         final String[] licenses = {avutil.avutil_license().getString(), avcodec.avcodec_license().getString(),
                 avformat.avformat_license().getString(), avdevice.avdevice_license().getString(),
                 avfilter.avfilter_license().getString(), swscale.swscale_license().getString(),
@@ -146,6 +157,6 @@ public final class VerifyFFmpeg {
             }
         }
         System.out.println("Verified FFmpeg " + version + " (" + licenses[0] + "), libxml2 " + args[1]
-                + ", OpenSSL " + args[2] + ", seven JNI components, the Vulkan bindings, DASH, malformed XML and MPEG stream-count boundaries");
+                + ", OpenSSL " + args[2] + ", seven JNI components, the Vulkan bindings, " + String.join(", ", filters) + ", DASH, malformed XML and MPEG stream-count boundaries");
     }
 }

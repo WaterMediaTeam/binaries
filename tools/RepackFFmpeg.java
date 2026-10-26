@@ -96,7 +96,7 @@ public final class RepackFFmpeg {
             final String name = record.getProperty("archive", "");
             final String verification = record.getProperty("verification", "");
             final Set<String> checks = new HashSet<>(List.of(verification.split(",", -1)));
-            final Set<String> requiredChecks = Set.of("JNI-wrappers", "vulkan-bindings", "DASH", "recursive-entities",
+            final Set<String> requiredChecks = Set.of("JNI-wrappers", "vulkan-bindings", "vulkan-filters", "DASH", "recursive-entities",
                     "imports-closure", "clean-environment", "TLS", "HTTP-headers");
             if (!version.equals(record.getProperty("version")) || !platform.getValue().equals(record.getProperty("platform"))
                         || !name.matches(Pattern.quote(base) + "(?:-[A-Za-z0-9_+.-]+)?\\.jar")

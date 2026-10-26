@@ -47,9 +47,26 @@ if (!(Test-Path -LiteralPath $cmakeDirectory)) {
 }
 $cmakeBin = if ($Platform.StartsWith('macosx-')) { Join-Path $cmakeDirectory 'CMake.app/Contents/bin' } else { Join-Path $cmakeDirectory 'bin' }
 $mavenBin = Join-Path $mavenDirectory 'bin'
-$env:PATH = $cmakeBin + [IO.Path]::PathSeparator + $mavenBin + [IO.Path]::PathSeparator + $env:PATH
-if ($env:GITHUB_PATH) {
-    Add-Content $env:GITHUB_PATH $mavenBin
-    Add-Content $env:GITHUB_PATH $cmakeBin
+$bins = @($cmakeBin, $mavenBin)
+
+# THE DISTRIBUTION MESON IS TOO OLD FOR libplacebo ON LINUX; meson.py RUNS IN PLACE THROUGH A bin/meson LINK
+if ($Platform.StartsWith('linux-')) {
+    $meson = $properties.meson_version
+    $archive = Join-Path $directory "meson-$meson.tar.gz"
+    if (!(Test-Path -LiteralPath $archive)) { Invoke-WebRequest "https://github.com/mesonbuild/meson/releases/download/$meson/meson-$meson.tar.gz" -OutFile $archive }
+    if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ine $properties.meson_sha256) { throw 'Meson archive SHA-256 mismatch' }
+    $mesonDirectory = Join-Path $directory "meson-$meson"
+    if (!(Test-Path -LiteralPath $mesonDirectory)) {
+        & tar -xzf $archive -C $directory
+        if ($LASTEXITCODE -ne 0) { throw 'Meson extraction failed' }
+    }
+    $mesonBin = Join-Path $mesonDirectory 'bin'
+    if (!(Test-Path -LiteralPath (Join-Path $mesonBin 'meson'))) {
+        [IO.Directory]::CreateDirectory($mesonBin) | Out-Null
+        New-Item -ItemType SymbolicLink -Path (Join-Path $mesonBin 'meson') -Target (Join-Path $mesonDirectory 'meson.py') | Out-Null
+    }
+    $bins += $mesonBin
 }
-Write-Output "Verified Maven $maven and CMake $cmake in $directory"
+$env:PATH = ($bins -join [IO.Path]::PathSeparator) + [IO.Path]::PathSeparator + $env:PATH
+if ($env:GITHUB_PATH) { foreach ($bin in $bins) { Add-Content $env:GITHUB_PATH $bin } }
+Write-Output "Verified Maven $maven, CMake $cmake$(if ($meson) { " and Meson $meson" }) in $directory"

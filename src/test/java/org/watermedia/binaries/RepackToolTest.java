@@ -318,8 +318,8 @@ class RepackToolTest {
             }
             record.setProperty("recipe.sha256", "0".repeat(64));
             record.setProperty("verification", invalidFinal && i == platforms.length - 1 ? "missing-TLS"
-                    : gpl ? "JNI-wrappers,vulkan-bindings,DASH,recursive-entities,imports-closure,clean-environment,TLS,HTTP-headers,GPL,libx264"
-                    : "JNI-wrappers,vulkan-bindings,DASH,recursive-entities,libxml2-version,openssl-version,imports-closure,clean-environment,TLS,HTTP-headers,LGPL,no-x264,no-x265");
+                    : gpl ? "JNI-wrappers,vulkan-bindings,vulkan-filters,DASH,recursive-entities,imports-closure,clean-environment,TLS,HTTP-headers,GPL,libx264"
+                    : "JNI-wrappers,vulkan-bindings,vulkan-filters,DASH,recursive-entities,libxml2-version,openssl-version,imports-closure,clean-environment,TLS,HTTP-headers,LGPL,no-x264,no-x265");
             try (final var output = Files.newOutputStream(candidate.resolve("build.properties"))) { record.store(output, null); }
         }
         return candidates;
