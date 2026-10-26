@@ -55,7 +55,8 @@ source and recipe hashes. Compare their dependency inventories and run the nativ
 matching recipe hashes as proof of byte-for-byte reproducibility.
 
 `-PrepareOnly` downloads and verifies source archives and patches the pristine recipe without
-running a native compiler. `-VerifyOnly` validates an already built classifier without recompiling.
+running a native compiler. Every download is retried a few times, and the FFmpeg release tarball, pinned by
+`ffmpeg_sha256`, is placed in the recipe's download cache, so the recipe's own single `curl` to ffmpeg.org never runs. `-VerifyOnly` validates an already built classifier without recompiling.
 The build preserves the upstream codec and hardware configuration, and adds no DASH format restriction.
 VDPAU remains disabled as in the original Linux classifiers, keeping their existing system-library contract.
 

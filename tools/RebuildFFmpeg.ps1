@@ -39,13 +39,24 @@ $sslArchive = Join-Path $work "openssl-$sslVersion.tar.gz"
 $sslUrl = "https://github.com/openssl/openssl/releases/download/openssl-$sslVersion/openssl-$sslVersion.tar.gz"
 $vulkanArchive = Join-Path $work "Vulkan-Headers-$vulkanVersion.zip"
 $vulkanUrl = "https://github.com/KhronosGroup/Vulkan-Headers/archive/refs/tags/v$vulkanVersion.zip"
+$ffmpegVersion = $properties.ffmpeg_version.Split('-')[0]
+$ffmpegArchive = Join-Path $work "ffmpeg-$ffmpegVersion.tar.bz2"
 foreach ($download in @(
     @{ Url = $sourceUrl; Path = $sourceArchive; Hash = $properties.ffmpeg_source_sha256 },
     @{ Url = $xmlUrl; Path = $xmlArchive; Hash = $properties.libxml2_sha256 },
     @{ Url = $sslUrl; Path = $sslArchive; Hash = $properties.openssl_sha256 },
-    @{ Url = $vulkanUrl; Path = $vulkanArchive; Hash = $properties.vulkan_headers_sha256 }
+    @{ Url = $vulkanUrl; Path = $vulkanArchive; Hash = $properties.vulkan_headers_sha256 },
+    @{ Url = "https://ffmpeg.org/releases/ffmpeg-$ffmpegVersion.tar.bz2"; Path = $ffmpegArchive; Hash = $properties.ffmpeg_sha256 }
 )) {
-    if (!(Test-Path -LiteralPath $download.Path)) { Invoke-WebRequest -Uri $download.Url -OutFile $download.Path }
+    # SERVERS RESET CONNECTIONS NOW AND THEN (ffmpeg.org ABOVE ALL); SPACED RETRIES KEEP ONE HICCUP FROM FAILING A MULTI-HOUR BUILD
+    for ($attempt = 1; !(Test-Path -LiteralPath $download.Path); $attempt++) {
+        try { Invoke-WebRequest -Uri $download.Url -OutFile $download.Path }
+        catch {
+            if (Test-Path -LiteralPath $download.Path) { Remove-Item -LiteralPath $download.Path }
+            if ($attempt -ge 5) { throw }
+            Start-Sleep -Seconds (20 * $attempt)
+        }
+    }
     if ((Get-FileHash -LiteralPath $download.Path -Algorithm SHA256).Hash -ine $download.Hash) {
         throw "Source archive SHA-256 mismatch: $($download.Url)"
     }
@@ -137,13 +148,13 @@ if ($variant -ceq 'lgpl') {
 } elseif (!$recipe.Contains('--enable-gpl --enable-version3 --enable-libx264 --enable-libx265') -or !$recipe.Contains('--disable-nonfree')) {
     throw 'GPL recipe lost its codec configuration or nonfree exclusion'
 }
-if (!$recipe.Contains("FFMPEG_VERSION=$($properties.ffmpeg_version.Split('-')[0])")) { throw 'Source FFmpeg version disagrees with the Java wrappers' }
+if (!$recipe.Contains("FFMPEG_VERSION=$ffmpegVersion")) { throw 'Source FFmpeg version disagrees with the Java wrappers' }
 if ([regex]::Matches($recipe, [regex]::Escape('patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg-tls.patch')).Count -ne 1) { throw 'The native recipe must apply the TLS patch exactly once' }
 if ([regex]::Matches($recipe, [regex]::Escape('patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg-headers.patch')).Count -ne 1) { throw 'The native recipe must apply the HTTP headers patch exactly once' }
 Copy-Item -LiteralPath $tlsPatch -Destination (Join-Path $source 'ffmpeg/ffmpeg-tls.patch') -Force
 Copy-Item -LiteralPath $headersPatch -Destination (Join-Path $source 'ffmpeg/ffmpeg-headers.patch') -Force
 [IO.File]::WriteAllText((Join-Path $source 'ffmpeg/cppbuild.sh'), $recipe, [Text.UTF8Encoding]::new($false))
-$upstreamVersion = '<version>' + $properties.ffmpeg_version.Split('-')[0] + '-${project.parent.version}</version>'
+$upstreamVersion = '<version>' + $ffmpegVersion + '-${project.parent.version}</version>'
 if (!$pom.Contains($upstreamVersion)) { throw 'Unexpected FFmpeg Maven version expression' }
 $pom = $pom.Replace($upstreamVersion, "<version>$($properties.ffmpeg_version)</version>")
 $gplProfile = @'
@@ -194,9 +205,12 @@ $cache = Join-Path $source 'downloads'
 [IO.Directory]::CreateDirectory($cache) | Out-Null
 Copy-Item -LiteralPath $xmlArchive -Destination (Join-Path $cache "libxml2-$xmlVersion.tar.xz") -Force
 Copy-Item -LiteralPath $sslArchive -Destination (Join-Path $cache "openssl-$sslVersion.tar.gz") -Force
+# THE RECIPE'S OWN curl HAS NO RETRY; A CACHED TARBALL SKIPS IT
+Copy-Item -LiteralPath $ffmpegArchive -Destination (Join-Path $cache "ffmpeg-$ffmpegVersion.tar.bz2") -Force
 Write-Output "Prepared $Platform sources: $source"
 Write-Output "Verified libxml2 $xmlVersion SHA-256: $($properties.libxml2_sha256)"
 Write-Output "Verified OpenSSL $sslVersion SHA-256: $($properties.openssl_sha256)"
+Write-Output "Verified FFmpeg $ffmpegVersion SHA-256: $($properties.ffmpeg_sha256)"
 Write-Output "Verified Vulkan headers $vulkanVersion SHA-256: $($properties.vulkan_headers_sha256)"
 Write-Output "Verified $variant recipe and JavaCPP Maven profile"
 Write-Output "Verified TLS patch SHA-256: $($properties.ffmpeg_tls_patch_sha256)"
@@ -205,7 +219,7 @@ if ($PrepareOnly) { return }
 
 if (!$VerifyOnly) {
     $nativeBuild = [IO.Path]::GetFullPath((Join-Path $source "ffmpeg/cppbuild/$buildPlatform"))
-    $ffmpegSource = [IO.Path]::GetFullPath((Join-Path $nativeBuild "ffmpeg-$($properties.ffmpeg_version.Split('-')[0])"))
+    $ffmpegSource = [IO.Path]::GetFullPath((Join-Path $nativeBuild "ffmpeg-$ffmpegVersion"))
     $nativePrefix = $nativeBuild + [IO.Path]::DirectorySeparatorChar
     if (!$ffmpegSource.StartsWith($nativePrefix, [StringComparison]::OrdinalIgnoreCase)) { throw 'FFmpeg source cleanup escaped its build directory' }
     # TAR OVERLAYS DO NOT REMOVE FILES ADDED BY PATCHES; RESET ONLY THE GENERATED FFMPEG SOURCE TREE.
@@ -256,7 +270,7 @@ if (!$VerifyOnly) {
         if ($LASTEXITCODE -ne 0) { throw "FFmpeg native compilation failed for $Platform" }
     } finally { Pop-Location }
 }
-$ffmpegSource = [IO.Path]::GetFullPath((Join-Path $source "ffmpeg/cppbuild/$buildPlatform/ffmpeg-$($properties.ffmpeg_version.Split('-')[0])"))
+$ffmpegSource = [IO.Path]::GetFullPath((Join-Path $source "ffmpeg/cppbuild/$buildPlatform/ffmpeg-$ffmpegVersion"))
 $patches = @($tlsPatch, $headersPatch)
 $paths = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
 foreach ($patch in $patches) {
@@ -422,7 +436,7 @@ foreach ($name in @('HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'http_proxy', 'htt
 $start.Environment['NO_PROXY'] = '*'
 $start.Environment['no_proxy'] = '*'
 foreach ($probe in @(
-    @{ File = 'VerifyFFmpeg.java'; Arguments = @($properties.ffmpeg_version.Split('-')[0], $xmlVersion, $sslVersion, $jar, (Join-Path $smoke 'stream.mpd'), $variant) },
+    @{ File = 'VerifyFFmpeg.java'; Arguments = @($ffmpegVersion, $xmlVersion, $sslVersion, $jar, (Join-Path $smoke 'stream.mpd'), $variant) },
     @{ File = 'VerifyTLS.java'; Arguments = @((Join-Path $smoke 'stream.mpd')) }
 )) {
     $start.ArgumentList.Clear()
