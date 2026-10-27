@@ -34,11 +34,12 @@ jobs:
         shell: pwsh
         run: ./tools/SetupJava.ps1 -Platform '${{ matrix.platform }}'
 
+      # ONLY THE ARM64 RECIPE ENABLES libudev (v4l2-request); FFMPEG'S CONFIGURE WOULD AUTODETECT IT ON X64 AND MAKE libavutil REQUIRE IT
       - name: Install Linux build prerequisites
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential autoconf autoconf-archive automake libtool pkg-config nasm ninja-build ragel unzip zip xz-utils libva-dev libdrm-dev libasound2-dev libpulse-dev libxcb1-dev libx11-dev libudev-dev
+          sudo apt-get install -y build-essential autoconf autoconf-archive automake libtool pkg-config nasm ninja-build ragel unzip zip xz-utils libva-dev libdrm-dev libasound2-dev libpulse-dev libxcb1-dev libx11-dev ${{ matrix.platform == 'linux-arm64' && 'libudev-dev' || '' }}
 
       - name: Install macOS build prerequisites
         if: runner.os == 'macOS'
