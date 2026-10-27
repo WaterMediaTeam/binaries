@@ -259,7 +259,6 @@ class RepackToolTest {
             properties.setProperty("ffmpeg_version", "9.0-custom-1.5.14");
             properties.setProperty("ffmpeg_variant", "gpl");
             properties.setProperty("ffmpeg_license", "GPL-3.0-or-later");
-            properties.remove("ffmpeg_tls_patch_sha256");
             properties.remove("ffmpeg_headers_patch_sha256");
         }
         try (final var output = Files.newOutputStream(this.directory.resolve("gradle.properties"))) { properties.store(output, null); }
@@ -312,14 +311,11 @@ class RepackToolTest {
             record.setProperty("openssl.sha256", properties.getProperty("openssl_sha256"));
             record.setProperty("vulkan.headers.version", properties.getProperty("vulkan_headers_version"));
             record.setProperty("vulkan.headers.sha256", properties.getProperty("vulkan_headers_sha256"));
-            if (!gpl) {
-                record.setProperty("tls.patch.sha256", properties.getProperty("ffmpeg_tls_patch_sha256"));
-                record.setProperty("headers.patch.sha256", properties.getProperty("ffmpeg_headers_patch_sha256"));
-            }
+            if (!gpl) record.setProperty("headers.patch.sha256", properties.getProperty("ffmpeg_headers_patch_sha256"));
             record.setProperty("recipe.sha256", "0".repeat(64));
             record.setProperty("verification", invalidFinal && i == platforms.length - 1 ? "missing-TLS"
-                    : gpl ? "JNI-wrappers,vulkan-bindings,vulkan-filters,DASH,recursive-entities,imports-closure,clean-environment,TLS,HTTP-headers,GPL,libx264"
-                    : "JNI-wrappers,vulkan-bindings,vulkan-filters,DASH,recursive-entities,libxml2-version,openssl-version,imports-closure,clean-environment,TLS,HTTP-headers,LGPL,no-x264,no-x265");
+                    : gpl ? "JNI-wrappers,vulkan-bindings,vulkan-filters,libkvazaar,DASH,recursive-entities,imports-closure,clean-environment,TLS,HTTP-headers,GPL,libx264"
+                    : "JNI-wrappers,vulkan-bindings,vulkan-filters,libkvazaar,DASH,recursive-entities,libxml2-version,openssl-version,imports-closure,clean-environment,TLS,HTTP-headers,LGPL,no-x264,no-x265");
             try (final var output = Files.newOutputStream(candidate.resolve("build.properties"))) { record.store(output, null); }
         }
         return candidates;

@@ -37,7 +37,7 @@ under `META-INF/licenses/`:
 - **LGPL-3.0-or-later** — FFmpeg, built with `--enable-version3` and without `--enable-gpl`, x264 or x265
 - **LGPL-2.1-or-later** — ALSA (Linux ARM64)
 - **GPL-3.0-or-later WITH GCC-exception-3.1** — libatomic on macOS and eligible GCC runtime portions
-- **Apache-2.0** — JavaCPP JNI glue
+- **Apache-2.0** — JavaCPP JNI glue; Rockchip MPP (Linux ARM64)
 - **MIT / X11** — libva, libva-drm and libdrm (Linux x64)
 - **BSD-3-Clause** — Raspberry Pi userland (Linux ARM64)
 - **MIT / BSD-3-Clause** — winpthreads (Windows)

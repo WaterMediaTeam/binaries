@@ -1,17 +1,20 @@
 # Native rebuilds
 
-The upstream recipe links libxml2 2.9.12 and OpenSSL 3.5.7 statically. `RebuildFFmpeg.ps1` retains the
-preset's FFmpeg/JavaCPP coordinate (`9.0.2-1.5.14`) and prepares the suffix-free LGPL recipe with
+The upstream recipe links libxml2 2.9.12 and OpenSSL 3.5.7 statically. `RebuildFFmpeg.ps1` builds the
+preset as `9.0.2-1.5.14` and prepares the suffix-free LGPL recipe with
 libxml2 2.15.4 and OpenSSL 3.5.8. The preset sources come from the `ffmpeg_source_repository` fork
-(`SrRapero720/javacpp-presets`, branch `ffmpeg-vulkan-1.5.14`), which upgrades tag `1.5.14` to FFmpeg 9.0.2 and maps
-`libavutil/hwcontext_vulkan.h` into the `avutil` preset (`AVVulkanDeviceContext`, `AVVulkanFramesContext`, `AVVkFrame`
-and the `av_vk_*` functions of `org.bytedeco.ffmpeg.global.avutil`) so WaterMedia can decode on its own Vulkan device.
+(`SrRapero720/javacpp-presets`, branch `ffmpeg-watermedia-custom`), which upgrades the JavaCPP Presets master to
+FFmpeg 9.0.2 with `libavutil/hwcontext_vulkan.h` mapped into the `avutil` preset (`AVVulkanDeviceContext`,
+`AVVulkanFramesContext`, `AVVkFrame` and the `av_vk_*` functions of `org.bytedeco.ffmpeg.global.avutil`) so WaterMedia
+can decode on its own Vulkan device, and carries the upstream export fix for decoded Vulkan frames.
 The fork's recipe also builds shaderc and libplacebo statically, so FFmpeg compiles its Vulkan shaders with that
-`glslc` and links the `libplacebo` filter, and adds the AMF headers (Windows and Linux x64) and the D3D12 video processor
-header (Windows) for the AMF and D3D12 filters. The commit, source archive hash and native dependency versions are
-pinned in `gradle.properties`. Maven resolves the
-JavaCPP `1.5.14` release from Maven Central and `javacpp_sha256` pins that jar. The recipe keeps OpenCL disabled,
-so libavutil never requires an OpenCL loader.
+`glslc` and links the `libplacebo` filter, adds the AMF headers (Windows and Linux x64) and the D3D12 video processor
+header (Windows) for the AMF and D3D12 filters, and links the Kvazaar HEVC encoder statically on every platform.
+The commit, source archive hash and native dependency versions are pinned in `gradle.properties`.
+The master preset declares `1.5.15-SNAPSHOT`, whose JavaCPP only bumps the version of the `1.5.14` release, so the
+script sets the presets parent to the JavaCPP version of `ffmpeg_version`: Maven resolves the JavaCPP `1.5.14` release
+from Maven Central and `javacpp_sha256` pins that jar. The script also removes master's desktop OpenCL override, its
+Windows D3D11 sharing check and the OpenCL Maven artifacts, so libavutil never requires an OpenCL loader.
 The Maven build also produces the Java wrappers
 (`ffmpeg/target/ffmpeg.jar`) that match those JNI libraries: each candidate carries its copy as
 `ffmpeg-<version>.jar`, the repacker installs the first verified one as `libs/ffmpeg-<version>.jar`, and the
@@ -24,10 +27,12 @@ That profile retains x264/x265 and the upstream GPL Maven profile, and produces 
 Both profiles keep the native integrity and behavior checks. Other build versions require matching
 JavaCPP sources, bindings and checksums; runtime loading does not impose a fixed version or license.
 FFmpeg 9.0.2 verifies certificates by default and pins numeric hosts to the certificate's IP identity.
-The checksum-pinned TLS patch carries the trust options (`tls_verify`, `ca_file`) through HTTP, HLS and DASH,
-including manifests read from local files.
-The second `ffmpeg-headers.patch` binds sensitive HTTP headers to their original request origin across
-redirects and nested streams. Its separate checksum is required for candidates using this recipe.
+The fork's recipe applies `ffmpeg-tls.patch`, which carries the trust options (`tls_verify`, `ca_file`) through
+HTTP, HLS and DASH, including manifests read from local files, and `ffmpeg-tls-winstore.patch`, which loads the
+Windows ROOT store when no `ca_file` is given; on Linux and macOS its OpenSSL reads the system certificates from `/etc/ssl`.
+`RebuildFFmpeg.ps1` applies the checksum-pinned `ffmpeg-headers.patch` right after them; it binds sensitive HTTP
+headers to their original request origin across redirects and nested streams. Its checksum is required for
+candidates using this recipe.
 Custom candidates may supply equivalent capabilities through different sources; the packer checks
 the declared provenance and artifact hashes, while native behavior must be verified on its target platform.
 `Authorization`, `Proxy-Authorization`, `Cookie`, `Cookie2` and `X-WaterMedia-Token` are retained only
@@ -77,7 +82,7 @@ Before a candidate is exported, the script generates a local H.264 DASH fixture 
 Java process using the Java wrappers of the same Maven build. It must load all seven JNI
 components, link the Vulkan bindings of libavutil, find the `scale_vulkan` and `libplacebo` filters (plus `scale_d3d12`
 and `vpp_amf` on Windows and `vpp_amf` on Linux x64, which configure drops silently when their tools or headers are
-missing), confirm the selected recipe's actual licenses, flags and encoders, identify
+missing) and the `libkvazaar` encoder, confirm the selected recipe's actual licenses, flags and encoders, identify
 the expected embedded libxml2 and OpenSSL versions, encode the fixture with OpenH264 for LGPL or x264 for GPL, parse the DASH
 fixture and reject a recursive-entity manifest. This process receives only the packaged native
 directory, JDK and operating-system paths; compiler directories and inherited Java options are removed.
@@ -87,7 +92,7 @@ These checks are regression probes, not proof of exhaustive vulnerability covera
 A second fresh Java process runs `VerifyTLS.java` against local HTTPS fixtures. Trusted DNS/IP peers
 and nested HLS/DASH reads must work; untrusted certificates and incorrect endpoint identities must
 be rejected before any HTTP request reaches the rejected peer. Candidates are exported only after
-both probes pass, and their records include the exact TLS and HTTP headers patch hashes.
+both probes pass, and their records include the source archive and HTTP headers patch hashes.
 The same suite verifies header and cookie isolation across redirects, ports and nested HLS/DASH reads,
 including same-origin positive cases and a return to the original origin after a foreign request.
 The build verifies the round-trip patch set in an isolated copy of only the touched source files.
@@ -131,8 +136,8 @@ the shared runtime manifest, with the SHA-256 of each platform's Java wrappers, 
 platform's wrappers as `libs/ffmpeg-<version>.jar`. Once rebuilt natives are installed, running the
 repacker without a candidate directory fails instead of silently replacing them with the original Maven binaries.
 
-Sources: [JavaCPP Presets fork with the Vulkan bindings](https://github.com/SrRapero720/javacpp-presets/tree/ffmpeg-vulkan-1.5.14)
-on [JavaCPP Presets 1.5.14](https://github.com/bytedeco/javacpp-presets/tree/1.5.14),
+Sources: [JavaCPP Presets fork with the Vulkan bindings](https://github.com/SrRapero720/javacpp-presets/tree/ffmpeg-watermedia-custom)
+on [JavaCPP Presets master](https://github.com/bytedeco/javacpp-presets) and [JavaCPP 1.5.14](https://github.com/bytedeco/javacpp/tree/1.5.14),
 [libxml2 2.15.4 release notes](https://download.gnome.org/sources/libxml2/2.15/libxml2-2.15.4.news),
 [OpenSSL August 2026 advisory](https://mirror.openssl-library.org/news/secadv/20260825.txt).
 

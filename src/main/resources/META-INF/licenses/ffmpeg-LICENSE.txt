@@ -5,7 +5,7 @@ The configuration uses --enable-version3 and excludes --enable-gpl, --enable-non
 x265. The resulting FFmpeg libraries report GNU Lesser General Public License version 3 or later.
 
 Supporting native libraries bundled beside FFmpeg are documented separately under META-INF/licenses,
-including JavaCPP JNI, Linux x64 VA-API/DRM, Linux ARM64 ALSA and Raspberry Pi userland,
+including JavaCPP JNI, Linux x64 VA-API/DRM, Linux ARM64 ALSA, Raspberry Pi userland and Rockchip MPP,
 macOS GCC runtimes and Windows winpthreads. Other statically linked libraries retain their own compatible
 license and notice requirements.
 

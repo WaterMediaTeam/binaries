@@ -70,7 +70,6 @@ public final class RepackFFmpeg {
         metadata.put("openssl_sha256", "openssl.sha256");
         metadata.put("vulkan_headers_version", "vulkan.headers.version");
         metadata.put("vulkan_headers_sha256", "vulkan.headers.sha256");
-        metadata.put("ffmpeg_tls_patch_sha256", "tls.patch.sha256");
         metadata.put("ffmpeg_headers_patch_sha256", "headers.patch.sha256");
         for (final var entry: metadata.entrySet()) {
             final String value = properties.getProperty(entry.getKey());
@@ -96,7 +95,7 @@ public final class RepackFFmpeg {
             final String name = record.getProperty("archive", "");
             final String verification = record.getProperty("verification", "");
             final Set<String> checks = new HashSet<>(List.of(verification.split(",", -1)));
-            final Set<String> requiredChecks = Set.of("JNI-wrappers", "vulkan-bindings", "vulkan-filters", "DASH", "recursive-entities",
+            final Set<String> requiredChecks = Set.of("JNI-wrappers", "vulkan-bindings", "vulkan-filters", "libkvazaar", "DASH", "recursive-entities",
                     "imports-closure", "clean-environment", "TLS", "HTTP-headers");
             if (!version.equals(record.getProperty("version")) || !platform.getValue().equals(record.getProperty("platform"))
                         || !name.matches(Pattern.quote(base) + "(?:-[A-Za-z0-9_+.-]+)?\\.jar")

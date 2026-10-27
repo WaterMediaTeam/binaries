@@ -45,6 +45,9 @@ public final class VerifyFFmpeg {
             final var filter = avfilter.avfilter_get_by_name(name);
             if (filter == null || filter.isNull()) throw new IllegalStateException("FFmpeg lacks the " + name + " filter");
         }
+        // THE RECIPE LINKS THE KVAZAAR HEVC ENCODER STATICALLY ON EVERY PLATFORM
+        final var kvazaar = avcodec.avcodec_find_encoder_by_name("libkvazaar");
+        if (kvazaar == null || kvazaar.isNull()) throw new IllegalStateException("FFmpeg lacks the libkvazaar encoder");
         final String[] licenses = {avutil.avutil_license().getString(), avcodec.avcodec_license().getString(),
                 avformat.avformat_license().getString(), avdevice.avdevice_license().getString(),
                 avfilter.avfilter_license().getString(), swscale.swscale_license().getString(),
@@ -157,6 +160,6 @@ public final class VerifyFFmpeg {
             }
         }
         System.out.println("Verified FFmpeg " + version + " (" + licenses[0] + "), libxml2 " + args[1]
-                + ", OpenSSL " + args[2] + ", seven JNI components, the Vulkan bindings, " + String.join(", ", filters) + ", DASH, malformed XML and MPEG stream-count boundaries");
+                + ", OpenSSL " + args[2] + ", seven JNI components, the Vulkan bindings, " + String.join(", ", filters) + ", libkvazaar, DASH, malformed XML and MPEG stream-count boundaries");
     }
 }

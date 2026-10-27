@@ -20,8 +20,6 @@ $vulkanVersion = $properties.vulkan_headers_version
 $variant = $properties.ffmpeg_variant
 $extension = if ($variant -ceq 'gpl') { '-gpl' } else { '' }
 $buildPlatform = "$Platform$extension"
-$tlsPatch = Join-Path $PSScriptRoot 'ffmpeg-tls.patch'
-if ($properties.ffmpeg_tls_patch_sha256 -notmatch '^[a-f0-9]{64}$' -or (Get-FileHash -LiteralPath $tlsPatch -Algorithm SHA256).Hash -ine $properties.ffmpeg_tls_patch_sha256) { throw 'Native TLS patch SHA-256 mismatch' }
 $headersPatch = Join-Path $PSScriptRoot 'ffmpeg-headers.patch'
 if ($properties.ffmpeg_headers_patch_sha256 -notmatch '^[a-f0-9]{64}$' -or (Get-FileHash -LiteralPath $headersPatch -Algorithm SHA256).Hash -ine $properties.ffmpeg_headers_patch_sha256) { throw 'Native HTTP headers patch SHA-256 mismatch' }
 $repository = $properties.ffmpeg_source_repository
@@ -78,6 +76,8 @@ if (!(Test-Path -LiteralPath $source)) {
     [IO.File]::WriteAllText($sourceMarker, $properties.ffmpeg_source_sha256, [Text.UTF8Encoding]::new($false))
 }
 if (!(Test-Path -LiteralPath $sourceMarker) -or (Get-Content -LiteralPath $sourceMarker -Raw) -cne $properties.ffmpeg_source_sha256) { throw 'Native source directory does not match the pinned source archive' }
+# THE RECIPE APPLIES ITS OWN TLS PATCH (tls_verify AND ca_file THROUGH HTTP, HLS AND DASH); THE PINNED ARCHIVE COVERS ITS BYTES
+$tlsPatch = Join-Path $source 'ffmpeg/ffmpeg-tls.patch'
 
 # PATCH THE VERIFIED PRISTINE RECIPE ON EVERY RUN, PRESERVING ITS OTHER CODECS AND PLATFORM FLAGS.
 $zip = [IO.Compression.ZipFile]::OpenRead($sourceArchive)
@@ -103,8 +103,7 @@ $changes = @(
     @('echo "[binaries]" >>', 'echo "[binaries]" >'),
     @('--disable-xlib"', '--disable-xlib --disable-vdpau"'),
     @('-lWs2_32 -lcrypt32 -lpthread', '-lWs2_32 -lcrypt32 -lbcrypt -lpthread'),
-    @('patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg.patch', ('patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg.patch' + "`n" + 'patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg-tls.patch')),
-    @('patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg-tls.patch', ('patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg-tls.patch' + "`n" + 'patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg-headers.patch'))
+    @('patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg-tls-winstore.patch', ('patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg-tls-winstore.patch' + "`n" + 'patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg-headers.patch'))
 )
 foreach ($change in $changes) {
     if ($change.Count -ne 2) { throw 'Each native recipe replacement must contain exactly two strings' }
@@ -114,8 +113,16 @@ foreach ($change in $changes) {
 $mfxConfig = '-DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Release .'
 if ([regex]::Matches($recipe, [regex]::Escape($mfxConfig)).Count -ne 2) { throw 'Expected two Windows mfx_dispatch CMake configurations' }
 $recipe = $recipe.Replace($mfxConfig, '-DCMAKE_POLICY_VERSION_MINIMUM=3.5 ' + $mfxConfig)
-# OPENCL STAYS DISABLED: LINKING IT WOULD MAKE libavutil REQUIRE AN OPENCL LOADER THAT NOT EVERY HOST HAS
-if ($recipe -match 'enable-opencl|OPENCL_PATH|-lOpenCL|HAVE_OPENCL' -or !$recipe.Contains('--disable-opencl')) { throw 'Native recipe must keep OpenCL disabled' }
+# OPENCL STAYS DISABLED: LINKING IT WOULD MAKE libavutil REQUIRE AN OPENCL LOADER THAT NOT EVERY HOST HAS,
+# SO THE RECIPE KEEPS ITS DEFAULT EXTRA_CONFIG WITHOUT THE DESKTOP OVERRIDE AND ITS D3D11 SHARING CHECK
+foreach ($pattern in @(
+    '(?ms)^case \$PLATFORM in\r?\n    linux-arm64 \| linux-x86_64 \| macosx-arm64 \| macosx-x86_64 \| windows-x86_64\)\r?\n        OPENCL_PATH=.*?^esac\r?\n',
+    '(?m)^[ \t]*if ! grep -q "\^#define HAVE_OPENCL_D3D11 1" config\.h; then\r?\n(?:.*\r?\n){3}[ \t]*fi\r?\n'
+)) {
+    if ([regex]::Matches($recipe, $pattern).Count -ne 1) { throw "Expected upstream OpenCL recipe block is missing or duplicated: $pattern" }
+    $recipe = [regex]::Replace($recipe, $pattern, '')
+}
+if ($recipe -match 'enable-opencl|OPENCL_PATH|-lOpenCL|HAVE_OPENCL' -or !$recipe.Contains('EXTRA_CONFIG="--disable-opencl"')) { throw 'Native recipe must keep OpenCL disabled' }
 $gplBlock = @'
 if [[ "$EXTENSION" == *gpl ]]; then
     # Enable GPLv3 modules
@@ -129,7 +136,7 @@ if ($variant -ceq 'lgpl') {
     foreach ($line in @(
     'X264=x264-stable',
     'X265=3.4',
-    'download https://code.videolan.org/videolan/x264/-/archive/stable/$X264.tar.gz $X264.tar.gz',
+    'download https://github.com/mirror/x264/archive/refs/heads/stable.tar.gz $X264.tar.gz',
     'download https://github.com/videolan/x265/archive/$X265.tar.gz x265-$X265.tar.gz',
     'tar --totals -xzf ../$X264.tar.gz',
     'tar --totals -xzf ../x265-$X265.tar.gz',
@@ -152,12 +159,28 @@ if ($variant -ceq 'lgpl') {
 if (!$recipe.Contains("FFMPEG_VERSION=$ffmpegVersion")) { throw 'Source FFmpeg version disagrees with the Java wrappers' }
 if ([regex]::Matches($recipe, [regex]::Escape('patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg-tls.patch')).Count -ne 1) { throw 'The native recipe must apply the TLS patch exactly once' }
 if ([regex]::Matches($recipe, [regex]::Escape('patch -Np1 -d ffmpeg-$FFMPEG_VERSION < ../../ffmpeg-headers.patch')).Count -ne 1) { throw 'The native recipe must apply the HTTP headers patch exactly once' }
-Copy-Item -LiteralPath $tlsPatch -Destination (Join-Path $source 'ffmpeg/ffmpeg-tls.patch') -Force
 Copy-Item -LiteralPath $headersPatch -Destination (Join-Path $source 'ffmpeg/ffmpeg-headers.patch') -Force
 [IO.File]::WriteAllText((Join-Path $source 'ffmpeg/cppbuild.sh'), $recipe, [Text.UTF8Encoding]::new($false))
 $upstreamVersion = '<version>' + $ffmpegVersion + '-${project.parent.version}</version>'
 if (!$pom.Contains($upstreamVersion)) { throw 'Unexpected FFmpeg Maven version expression' }
 $pom = $pom.Replace($upstreamVersion, "<version>$($properties.ffmpeg_version)</version>")
+# JAVACPP MASTER (1.5.15-SNAPSHOT) ONLY BUMPS THE VERSION OF ITS 1.5.14 RELEASE: THE PRESETS PARENT TAKES THE RELEASE ffmpeg_version NAMES,
+# SO MAVEN RESOLVES JAVACPP FROM MAVEN CENTRAL INSTEAD OF A SNAPSHOT REPOSITORY
+$javaVersion = $properties.ffmpeg_version.Substring($properties.ffmpeg_version.IndexOf('-') + 1)
+$presetsVersion = '(?<=<artifactId>javacpp-presets</artifactId>\s*<version>)[^<]+(?=</version>)'
+if ([regex]::Matches($pom, $presetsVersion).Count -ne 1 -or [regex]::Matches($parentPom, $presetsVersion).Count -ne 1) { throw 'Unexpected JavaCPP presets parent version' }
+$pom = [regex]::Replace($pom, $presetsVersion, $javaVersion)
+$parentPom = [regex]::Replace($parentPom, $presetsVersion, $javaVersion)
+[IO.File]::WriteAllText((Join-Path $source 'pom.xml'), $parentPom, [Text.UTF8Encoding]::new($false))
+# WITHOUT OPENCL THE PRESET NEEDS NEITHER THE OPENCL ARTIFACTS NOR THE PLUGIN PATHS THAT POINT AT THEM
+foreach ($pattern in @(
+    '(?s)\s*<dependency>\s*<groupId>org\.bytedeco</groupId>\s*<artifactId>opencl</artifactId>.*?</dependency>',
+    '(?s)(?<=<artifactId>javacpp</artifactId>)\s*<dependencies>\s*<dependency>\s*<groupId>org\.bytedeco</groupId>\s*<artifactId>opencl-platform</artifactId>.*?</configuration>'
+)) {
+    if ([regex]::Matches($pom, $pattern).Count -ne 1) { throw "Expected upstream OpenCL Maven block is missing or duplicated: $pattern" }
+    $pom = [regex]::Replace($pom, $pattern, '')
+}
+if ($pom.Contains('opencl')) { throw 'Generated Maven project still depends on OpenCL' }
 $gplProfile = @'
     <profile>
       <id>ffmpeg-gpl</id>
@@ -213,8 +236,7 @@ Write-Output "Verified libxml2 $xmlVersion SHA-256: $($properties.libxml2_sha256
 Write-Output "Verified OpenSSL $sslVersion SHA-256: $($properties.openssl_sha256)"
 Write-Output "Verified FFmpeg $ffmpegVersion SHA-256: $($properties.ffmpeg_sha256)"
 Write-Output "Verified Vulkan headers $vulkanVersion SHA-256: $($properties.vulkan_headers_sha256)"
-Write-Output "Verified $variant recipe and JavaCPP Maven profile"
-Write-Output "Verified TLS patch SHA-256: $($properties.ffmpeg_tls_patch_sha256)"
+Write-Output "Verified $variant recipe and JavaCPP $javaVersion Maven profile"
 Write-Output "Verified HTTP headers patch SHA-256: $($properties.ffmpeg_headers_patch_sha256)"
 if ($PrepareOnly) { return }
 
@@ -413,7 +435,6 @@ try {
     & $program -nostdin -v error -f lavfi -i 'color=c=black:s=32x32:r=1' -t 1 -c:v $fixtureEncoder -an -f dash -y 'stream.mpd'
     if ($LASTEXITCODE -ne 0) { throw 'Rebuilt FFmpeg cannot produce the DASH regression fixture' }
 } finally { Pop-Location }
-$javaVersion = $properties.ffmpeg_version.Substring($properties.ffmpeg_version.IndexOf('-') + 1)
 # THE JAVA WRAPPERS COME OUT OF THE SAME MAVEN BUILD AS THE JNI LIBRARIES, SO BOTH CARRY THE PRESET'S BINDINGS (hwcontext_vulkan INCLUDED)
 $wrapper = Join-Path $source 'ffmpeg/target/ffmpeg.jar'
 $javaCpp = Join-Path ([Environment]::GetFolderPath('UserProfile')) ".m2/repository/org/bytedeco/javacpp/$javaVersion/javacpp-$javaVersion.jar"
@@ -480,10 +501,9 @@ $lines = @(
     "openssl.sha256=$($properties.openssl_sha256)",
     "vulkan.headers.version=$vulkanVersion",
     "vulkan.headers.sha256=$($properties.vulkan_headers_sha256)",
-    "tls.patch.sha256=$($properties.ffmpeg_tls_patch_sha256)",
     "headers.patch.sha256=$($properties.ffmpeg_headers_patch_sha256)",
     "recipe.sha256=$((Get-FileHash -LiteralPath (Join-Path $source 'ffmpeg/cppbuild.sh') -Algorithm SHA256).Hash.ToLowerInvariant())",
-    "verification=JNI-wrappers,vulkan-bindings,vulkan-filters,DASH,recursive-entities,libxml2-version,openssl-version,imports-closure,clean-environment,TLS,HTTP-headers,$(if ($variant -ceq 'gpl') { 'GPL,libx264,libx265' } else { 'LGPL,no-x264,no-x265' })",
+    "verification=JNI-wrappers,vulkan-bindings,vulkan-filters,libkvazaar,DASH,recursive-entities,libxml2-version,openssl-version,imports-closure,clean-environment,TLS,HTTP-headers,$(if ($variant -ceq 'gpl') { 'GPL,libx264,libx265' } else { 'LGPL,no-x264,no-x265' })",
     "archive=$classifier",
     "archive.sha256=$((Get-FileHash -LiteralPath $jar -Algorithm SHA256).Hash.ToLowerInvariant())",
     "wrapper=$wrapperName",
